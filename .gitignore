@@ -10,3 +10,4 @@ ENV/
 *.sqlite3
 .DS_Store
 setup_project.sh
+app/data
