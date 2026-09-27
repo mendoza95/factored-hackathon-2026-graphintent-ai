@@ -1,6 +1,6 @@
-import json
 import re
 from typing import Any, Optional
+
 from app.backend.schemas.chat import IntentEnum
 
 
@@ -34,14 +34,11 @@ class LLMService:
         """Classify user intent using rule-based fallback and pattern matching."""
         message_lower = message.lower()
 
-        print(message_lower)
-
         for keyword in self._handoff_keywords:
             if keyword in message_lower:
                 return IntentEnum.HUMAN_HANDOFF
 
         for keyword in self._dispute_keywords:
-            print(keyword)
             if keyword in message_lower:
                 return IntentEnum.DISPUTE_INITIATE
 
@@ -98,8 +95,10 @@ class LLMService:
 
         if intent == IntentEnum.DISPUTE_INITIATE:
             return (
-                f"{greeting}. He registrado tu solicitud para iniciar la disputa del cargo. "
-                "Estamos validando los detalles de la transacción con nuestro sistema de seguridad."
+                f"{greeting}. He registrado tu solicitud para"
+                "iniciar la disputa del cargo. "
+                "Estamos validando los detalles de la transacción "
+                "con nuestro sistema de seguridad."
             )
         elif intent == IntentEnum.HUMAN_HANDOFF:
             return (
@@ -107,9 +106,15 @@ class LLMService:
                 "con un especialista de soporte humano para resolverlo de inmediato."
             )
         elif intent == IntentEnum.ACCOUNT_INQUIRY:
-            return f"{greeting}. Puedes consultar el saldo y movimientos de tu cuenta desde la app móvil o el portal web."
+            return (
+                f"{greeting}. Puedes consultar el saldo y movimientos "
+                "de tu cuenta desde la app móvil o el portal web."
+            )
 
-        return f"{greeting}. Lo siento, no puedo procesar esa solicitud de manera automática en este momento."
+        return (
+            f"{greeting}. Lo siento, no puedo procesar esa solicitud "
+            "de manera automática en este momento."
+        )
 
 
 # Global service instance

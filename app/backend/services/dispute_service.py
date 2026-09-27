@@ -2,6 +2,7 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 from typing import Any
+
 from app.backend.core.graph_scheduler import GraphColoringScheduler
 from app.backend.db.mock_db import db
 from app.backend.schemas.chat import (
@@ -22,13 +23,16 @@ class DisputeService:
         self.scheduler = GraphColoringScheduler()
 
     def process_chat_message(self, request: ChatRequest) -> ChatResponse:
-        """Process incoming user chat and execute necessary tasks via Graph Scheduler."""
+        """
+        Process incoming user chat and execute necessary tasks
+        via Graph Scheduler.
+        """
         # 1. Classify intent and extract entities using LLM Service
         intent = llm_service.classify_intent(request.message)
         entities = llm_service.extract_entities(request.message)
 
         # 2. Build task dependency graph based on intent
-        tasks = self._build_task_graph(intent, request, entities)
+        self._build_task_graph(intent, request, entities)
 
         # 3. Schedule and execute tasks in optimal parallel batches
         batch_schedule = self.scheduler.compute_schedule()
@@ -70,7 +74,10 @@ class DisputeService:
     def _build_task_graph(
         self, intent: IntentEnum, request: ChatRequest, entities: dict
     ) -> None:
-        """Build the conflict graph directly on the scheduler's NetworkX graph object."""
+        """
+        Build the conflict graph directly on the scheduler's
+        NetworkX graph object.
+        """
 
         # 1. Reset the graph for a new request
         self.scheduler.graph.clear()
@@ -161,7 +168,8 @@ class DisputeService:
         if claimed_amt and claimed_amt > 1000.0:
             return True, HandoffContext(
                 is_escalated=True,
-                reason="Claimed dispute amount exceeds automated approval threshold ($1,000 USD)",
+                reason="Claimed dispute amount exceeds automated approval "
+                "threshold ($1,000 USD)",
                 verified_facts={
                     "customer_id": context.get("customer_id"),
                     "claimed_amount": claimed_amt,

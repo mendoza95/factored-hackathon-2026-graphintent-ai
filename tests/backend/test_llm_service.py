@@ -33,7 +33,10 @@ def test_extract_entities_amount_and_currency():
 
 
 def test_extract_entities_default_usd_currency():
-    """Verify currency defaults to USD when dollar sign is present without explicit text currency."""
+    """
+    Verify currency defaults to USD when dollar sign is present
+    without explicit text currency.
+    """
     message = "No hice esta compra por $150.00"
     entities = llm_service.extract_entities(message)
 
@@ -42,7 +45,10 @@ def test_extract_entities_default_usd_currency():
 
 
 def test_generate_response_dialect_adaptation():
-    """Verify response greetings adapt to regional Spanish accents (Mexican, Argentine, Colombian)."""
+    """
+    Verify response greetings adapt to regional Spanish accents
+    (Mexican, Argentine, Colombian).
+    """
     intent = IntentEnum.DISPUTE_INITIATE
 
     res_mx = llm_service.generate_response(intent, user_accent="mexican")

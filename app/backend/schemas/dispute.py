@@ -2,6 +2,7 @@ from datetime import datetime
 from decimal import Decimal
 from enum import Enum
 from typing import Optional
+
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -55,7 +56,8 @@ class DisputeCreate(BaseModel):
     currency: str
     reason: str = Field(
         ...,
-        description="Reason provided by user in Spanish (e.g., 'Unrecognized transaction')",
+        description="Reason provided by user in Spanish (e.g., "
+        "'Unrecognized transaction')",
     )
     detected_country: CountryEnum
     detected_accent: Optional[str] = None

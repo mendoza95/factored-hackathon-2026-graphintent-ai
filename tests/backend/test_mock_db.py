@@ -1,6 +1,7 @@
+from decimal import Decimal
+
 import pytest
 
-from decimal import Decimal
 from app.backend.db.mock_db import MockDatabase
 from app.backend.schemas.dispute import ComplaintSchema
 

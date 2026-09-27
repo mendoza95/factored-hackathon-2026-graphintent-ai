@@ -1,5 +1,6 @@
-import networkx as nx
 import time
+
+import networkx as nx
 
 
 class GraphColoringScheduler:
