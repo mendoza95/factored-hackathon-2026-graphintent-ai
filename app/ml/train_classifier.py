@@ -1,84 +1,97 @@
-import os
 from pathlib import Path
+
 import joblib
-import pandas as pd
+from sklearn.compose import ColumnTransformer
 from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import classification_report, f1_score
+from sklearn.metrics import classification_report
 from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
-# Define paths
-BASE_DIR = Path(__file__).resolve().parent.parent
-DATA_PATH = BASE_DIR / "data" / "processed" / "intent_training_data.csv"
-MODEL_DIR = BASE_DIR / "app" / "ml" / "models"
-MODEL_PATH = MODEL_DIR / "intent_classifier.joblib"
+from app.ml.data import FEATURE_COLS, load_and_prepare_data
 
 
-def train_intent_model():
-    """Train a fast TF-IDF + Logistic Regression model for intent classification."""
-    if not DATA_PATH.exists():
-        raise FileNotFoundError(
-            f"Training dataset not found at {DATA_PATH}. "
-            "Please run app/ml/extract_training_data.py first."
-        )
-
-    print(f"Loading training data from {DATA_PATH}...")
-    df = pd.read_csv(DATA_PATH)
-
-    # Filter out missing text or labels
-    df = df.dropna(subset=["text", "label"])
-
-    X = df["text"]
-    y = df["label"]
-
-    print(f"Dataset shape: {X.shape}")
-    print("Class distribution:\n", y.value_counts())
-
-    # Split train/test sets with stratification
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, random_state=42, stratify=y
+def build_pipeline() -> Pipeline:
+    """Construct the multi-feature ColumnTransformer classification pipeline."""
+    text_transformer = TfidfVectorizer(
+        ngram_range=(1, 2), max_features=3000, sublinear_tf=True
     )
 
-    # Build lightweight NLP pipeline
-    pipeline = Pipeline(
+    categorical_cols = ["channel", "detected_sentiment", "has_past_complaint"]
+    categorical_transformer = Pipeline(
         [
-            (
-                "tfidf",
-                TfidfVectorizer(
-                    ngram_range=(1, 2),
-                    max_features=10000,
-                    sublinear_tf=True,
-                ),
-            ),
+            ("imputer", SimpleImputer(strategy="most_frequent")),
+            ("onehot", OneHotEncoder(handle_unknown="ignore")),
+        ]
+    )
+
+    numeric_cols = [
+        "duration_seconds",
+        "wait_time_seconds",
+        "sentiment_score",
+    ]
+    numeric_transformer = Pipeline(
+        [
+            ("imputer", SimpleImputer(strategy="median")),
+            ("scaler", StandardScaler()),
+        ]
+    )
+
+    preprocessor = ColumnTransformer(
+        transformers=[
+            ("text", text_transformer, "rich_text"),
+            ("cat", categorical_transformer, categorical_cols),
+            ("num", numeric_transformer, numeric_cols),
+        ]
+    )
+
+    return Pipeline(
+        [
+            ("preprocessor", preprocessor),
             (
                 "clf",
                 LogisticRegression(
-                    class_weight="balanced",
-                    max_iter=1000,
-                    C=1.0,
-                    random_state=42,
+                    class_weight="balanced", max_iter=1000, random_state=42
                 ),
             ),
         ]
     )
 
-    print("\nTraining intent classifier...")
+
+def train_and_save_model(data_dir: Path, model_output_path: Path):
+    """
+    Load dataset, train the intent classifier, print metrics,
+    and serialize the model.
+    """
+    print(f"Loading data from {data_dir}...")
+    df = load_and_prepare_data(data_dir)
+
+    X = df[FEATURE_COLS]
+    y = df["label"]
+
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=0.2, random_state=42, stratify=y
+    )
+
+    pipeline = build_pipeline()
+
+    print("Training multi-feature model...")
     pipeline.fit(X_train, y_train)
 
-    # Evaluate model performance
+    print("\n=== CLASSIFICATION REPORT ===")
     y_pred = pipeline.predict(X_test)
-    macro_f1 = f1_score(y_test, y_pred, average="macro")
-
-    print("\n--- Evaluation Report ---")
     print(classification_report(y_test, y_pred))
-    print(f"Macro F1 Score: {macro_f1:.4f}")
 
-    # Save model artifact
-    MODEL_DIR.mkdir(parents=True, exist_ok=True)
-    joblib.dump(pipeline, MODEL_PATH)
-    print(f"\nModel successfully saved to {MODEL_PATH}")
+    model_output_path.parent.mkdir(parents=True, exist_ok=True)
+    joblib.dump(pipeline, model_output_path)
+    print(f"\nModel artifact successfully saved to: {model_output_path}")
 
 
 if __name__ == "__main__":
-    train_intent_model()
+    BASE_DIR = Path(__file__).resolve().parent.parent
+    train_and_save_model(
+        data_dir=BASE_DIR / "data" / "sample",
+        model_output_path=BASE_DIR / "ml" / "models" / "intent_classifier.joblib",
+    )
