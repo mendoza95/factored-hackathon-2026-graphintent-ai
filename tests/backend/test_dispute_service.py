@@ -1,11 +1,14 @@
 from unittest.mock import patch
 
+import pytest
+
 from app.backend.schemas.chat import ChatRequest, IntentEnum
 from app.backend.services.dispute_service import dispute_service
 
 
+@pytest.mark.asyncio
 @patch("app.backend.services.dispute_service.process_interaction_event")
-def test_dispute_workflow_standard_amount(mock_orchestrator):
+async def test_dispute_workflow_standard_amount(mock_orchestrator):
     """
     Verify standard dispute workflow under $1,000 creates record
     without human handoff.
@@ -25,7 +28,7 @@ def test_dispute_workflow_standard_amount(mock_orchestrator):
         user_accent="mexican",
     )
 
-    response = dispute_service.process_chat_message(request)
+    response = await dispute_service.process_chat_message(request)
 
     assert response.intent_detected == IntentEnum.DISPUTE_INITIATE
     assert response.requires_human_handoff is False
@@ -34,8 +37,9 @@ def test_dispute_workflow_standard_amount(mock_orchestrator):
     assert response.optimization_metrics.graph_nodes_count == 5
 
 
+@pytest.mark.asyncio
 @patch("app.backend.services.dispute_service.process_interaction_event")
-def test_dispute_workflow_high_amount_guardrail(mock_orchestrator):
+async def test_dispute_workflow_high_amount_guardrail(mock_orchestrator):
     """
     Verify high-value claims (> $1,000 USD) trigger
     human handoff guardrail.
@@ -55,7 +59,7 @@ def test_dispute_workflow_high_amount_guardrail(mock_orchestrator):
         user_accent="colombian",
     )
 
-    response = dispute_service.process_chat_message(request)
+    response = await dispute_service.process_chat_message(request)
 
     assert response.intent_detected == IntentEnum.DISPUTE_INITIATE
     assert response.requires_human_handoff is True
@@ -63,8 +67,9 @@ def test_dispute_workflow_high_amount_guardrail(mock_orchestrator):
     assert "exceeds automated threshold" in response.handoff_details.reason
 
 
+@pytest.mark.asyncio
 @patch("app.backend.services.dispute_service.process_interaction_event")
-def test_escalate_to_human_action(mock_orchestrator):
+async def test_escalate_to_human_action(mock_orchestrator):
     """Verify ESCALATE_TO_HUMAN action sets human handoff flag and details."""
     mock_orchestrator.return_value = {
         "action": "ESCALATE_TO_HUMAN",
@@ -80,7 +85,7 @@ def test_escalate_to_human_action(mock_orchestrator):
         user_accent="argentine",
     )
 
-    response = dispute_service.process_chat_message(request)
+    response = await dispute_service.process_chat_message(request)
 
     assert response.intent_detected == IntentEnum.HUMAN_HANDOFF
     assert response.requires_human_handoff is True
@@ -90,8 +95,9 @@ def test_escalate_to_human_action(mock_orchestrator):
     )
 
 
+@pytest.mark.asyncio
 @patch("app.backend.services.dispute_service.process_interaction_event")
-def test_execute_account_inquiry_action(mock_orchestrator):
+async def test_execute_account_inquiry_action(mock_orchestrator):
     """
     Verify account inquiry action computes valid graph schedule
     without creating dispute records.
@@ -110,7 +116,7 @@ def test_execute_account_inquiry_action(mock_orchestrator):
         user_accent="mexican",
     )
 
-    response = dispute_service.process_chat_message(request)
+    response = await dispute_service.process_chat_message(request)
 
     assert response.intent_detected == IntentEnum.ACCOUNT_INQUIRY
     assert response.requires_human_handoff is False

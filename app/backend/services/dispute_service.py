@@ -1,10 +1,7 @@
-import uuid
-from datetime import datetime
-from decimal import Decimal
+import asyncio
 from typing import Any
 
 from app.backend.core.graph_scheduler import GraphColoringScheduler
-from app.backend.db.mock_db import db
 from app.backend.schemas.chat import (
     ChatRequest,
     ChatResponse,
@@ -12,9 +9,9 @@ from app.backend.schemas.chat import (
     IntentEnum,
     OptimizationMetadata,
 )
-from app.backend.schemas.dispute import ComplaintSchema
 from app.backend.services.llm_service import llm_service
 from app.backend.services.orchestrator import process_interaction_event
+from app.backend.services.task_handlers import TASK_HANDLERS
 
 # Action string to IntentEnum mapping for schema backwards-compatibility
 ACTION_TO_INTENT_MAP = {
@@ -29,13 +26,15 @@ class DisputeService:
     """Orchestrates transaction disputes using ML Hybrid Router & Graph Scheduler."""
 
     def __init__(self):
-        self.scheduler = GraphColoringScheduler()
+        pass
 
-    def process_chat_message(self, request: ChatRequest) -> ChatResponse:
+    async def process_chat_message(self, request: ChatRequest) -> ChatResponse:
         """
         Process incoming chat, execute fast-path or LLM routing,
         and run graph task scheduler.
         """
+        # 0. We instanciate a graph scheduler to proccess the current chat message.
+        scheduler = GraphColoringScheduler()
 
         # 1. Run Hybrid Orchestrator (Sub-10ms Fast-Path ML or LLM Fallback)
         payload = {
@@ -58,13 +57,13 @@ class DisputeService:
         ) or llm_service.classify_and_extract_llm(request.message)
 
         # 2. Build task dependency graph based on predicted operational action
-        self._build_task_graph(action, entities)
+        self._build_task_graph(scheduler, action, entities)
 
         # 3. Schedule and execute backend tasks in parallel batches
-        batch_schedule = self.scheduler.compute_schedule()
-        metrics = self.scheduler.get_optimization_metrics()
+        batch_schedule = scheduler.compute_schedule()
+        metrics = scheduler.get_optimization_metrics()
 
-        execution_context = self._execute_scheduled_batches(
+        execution_context = await self._execute_scheduled_batches(
             batch_schedule, request, entities
         )
 
@@ -99,15 +98,17 @@ class DisputeService:
             ),
         )
 
-    def _build_task_graph(self, action: str, entities: dict) -> None:
+    def _build_task_graph(
+        self, scheduler: GraphColoringScheduler, action: str, entities: dict
+    ) -> None:
         """Build conflict graph dynamically based on determined action."""
-        self.scheduler.graph.clear()
+        scheduler.graph.clear()
 
         base_tasks = ["extract_entities", "verify_customer"]
         for task in base_tasks:
-            self.scheduler.graph.add_node(task)
+            scheduler.graph.add_node(task)
 
-        self.scheduler.graph.add_edge("extract_entities", "verify_customer")
+        scheduler.graph.add_edge("extract_entities", "verify_customer")
 
         if action == "INITIATE_DISPUTE_WORKFLOW":
             dispute_tasks = [
@@ -116,51 +117,42 @@ class DisputeService:
                 "create_complaint_record",
             ]
             for task in dispute_tasks:
-                self.scheduler.graph.add_node(task)
+                scheduler.graph.add_node(task)
 
-            self.scheduler.graph.add_edge("verify_customer", "fetch_transactions")
-            self.scheduler.graph.add_edge("fetch_transactions", "evaluate_fraud_score")
-            self.scheduler.graph.add_edge(
-                "evaluate_fraud_score", "create_complaint_record"
-            )
-            self.scheduler.graph.add_edge("verify_customer", "create_complaint_record")
+            scheduler.graph.add_edge("verify_customer", "fetch_transactions")
+            scheduler.graph.add_edge("fetch_transactions", "evaluate_fraud_score")
+            scheduler.graph.add_edge("evaluate_fraud_score", "create_complaint_record")
+            scheduler.graph.add_edge("verify_customer", "create_complaint_record")
 
         elif action == "EXECUTE_ACCOUNT_INQUIRY":
-            self.scheduler.graph.add_node("fetch_account_balance")
-            self.scheduler.graph.add_edge("verify_customer", "fetch_account_balance")
+            scheduler.graph.add_node("fetch_account_balance")
+            scheduler.graph.add_edge("verify_customer", "fetch_account_balance")
 
-    def _execute_scheduled_batches(
+    async def _execute_scheduled_batches(
         self,
         batch_schedule: dict[int, list[str]],
         request: ChatRequest,
         entities: dict,
     ) -> dict[str, Any]:
-        """Execute scheduled tasks step by step."""
+        """Execute scheduled graph tasks batch by batch concurrently."""
         context: dict[str, Any] = {
             "customer_id": request.customer_id,
             "entities": entities,
         }
 
-        customer = db.get_customer(request.customer_id)
-        if customer:
-            context["customer_data"] = customer
+        # Process batches sequentially (Batch 0, then Batch 1, etc.)
+        for batch_id in sorted(batch_schedule.keys()):
+            node_names = batch_schedule[batch_id]
 
-        tx_list = db.get_customer_transactions(request.customer_id)
-        if tx_list:
-            context["recent_transactions"] = tx_list
+            # Gather tasks within the current batch to execute concurrently
+            tasks = []
+            for name in node_names:
+                handler = TASK_HANDLERS.get(name)
+                if handler:
+                    tasks.append(handler(context, request, entities))
 
-        if entities.get("claimed_amount"):
-            complaint_id = f"COMP_{uuid.uuid4().hex[:8].upper()}"
-            new_complaint = ComplaintSchema(
-                complaint_id=complaint_id,
-                creation_date=datetime.now(),
-                customer_id=request.customer_id,
-                claimed_amount=Decimal(str(entities["claimed_amount"])),
-                currency=entities.get("currency", "USD"),
-                status="Open",
-            )
-            db.create_complaint(new_complaint)
-            context["dispute_id"] = complaint_id
+            if tasks:
+                await asyncio.gather(*tasks)
 
         return context
 
