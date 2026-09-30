@@ -1,12 +1,24 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from app.backend.api.v1.chat import router as chat_router
 
 app = FastAPI(
-    title="Transaction Dispute AI Agent API",
+    title="Dispute Agent AI API",
     version="0.1.0",
-    description="API for transaction dispute agent powered by dynamic Graph Coloring",
+    description="Graph Coloring Scheduler Powered AI Agent for Transaction Disputes",
 )
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-@app.get("/health")
-def health_check():
+app.include_router(chat_router)
+
+
+@app.get("/health", tags=["Health"])
+async def health_check():
     return {"status": "ok"}
