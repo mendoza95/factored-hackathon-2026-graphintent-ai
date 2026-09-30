@@ -38,6 +38,7 @@ dev = [
     "debugpy",
     "executing",
     "fastjsonschema",
+    "httpx>=0.25.0",
     "ipykernel",
     "ipython",
     "ipython-pygments-lexers",
