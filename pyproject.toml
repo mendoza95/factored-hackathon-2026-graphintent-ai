@@ -21,6 +21,8 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
+    # Code formatting & linting
+    "ruff>=0.16.9",
     # Notebooks, interactive execution & debugging
     "appnope",
     "asttokens",
@@ -62,8 +64,3 @@ select = ["E", "F", "I"]
 asyncio_mode = "auto"
 testpaths = ["tests"]
 pythonpath = ["."]
-
-[dependency-groups]
-dev = [
-    "ruff>=0.16.9",
-]
