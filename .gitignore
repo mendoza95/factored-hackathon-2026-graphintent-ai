@@ -11,3 +11,4 @@ ENV/
 .DS_Store
 setup_project.sh
 app/data
+*.egg-info/
