@@ -13,7 +13,9 @@ class IntentEnum(str, Enum):
 
 
 class ChatRequest(BaseModel):
-    customer_id: str = Field(..., json_schema_extra={"example": "CUST_12345"})
+    customer_id: Optional[str] = Field(
+        default=None, json_schema_extra={"example": "CUST_12345"}
+    )
     session_id: str = Field(..., json_schema_extra={"example": "SESS_98765"})
     message: str = Field(
         ...,

@@ -5,10 +5,11 @@ from typing import Optional
 
 import pandas as pd
 
+from app.backend.db.base import BaseDatabase
 from app.backend.schemas.dispute import ComplaintSchema, TransactionSchema
 
 
-class MockDatabase:
+class MockDatabase(BaseDatabase):
     """In-memory database loader that populates from local sample CSVs."""
 
     def __init__(self, data_dir: str = "data/sample"):
@@ -141,6 +142,8 @@ class MockDatabase:
             "customer_id": cust_id,
             "first_name": "Carlos",
             "last_name": "Mendoza",
+            "document_type": "CC",
+            "document_number": "1098765432",
             "country": "Mexico",
             "detected_accent": "mexican",
             "segment": "Premium",
@@ -172,6 +175,31 @@ class MockDatabase:
             is_fraud=False,
             fraud_score=Decimal("12.5"),
         )
+
+    # --- Public Methods ---
+
+    def get_customer_by_document(
+        self, document_type: str, document_number: str
+    ) -> dict | None:
+        """Query in-memory customers dictionary by document type and number."""
+        for customer in self._customers.values():
+            doc_type_match = (
+                str(customer.get("document_type", "")).upper() == document_type.upper()
+            )
+            doc_num_match = str(customer.get("document_number", "")) == str(
+                document_number
+            )
+
+            if doc_type_match and doc_num_match:
+                return {
+                    "customer_id": customer["customer_id"],
+                    "first_name": customer.get("first_name", ""),
+                    "last_name": customer.get("last_name", ""),
+                    "document_type": customer.get("document_type", ""),
+                    "document_number": customer.get("document_number", ""),
+                }
+
+        return None
 
     # --- Public Methods ---
 

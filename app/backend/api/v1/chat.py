@@ -1,5 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, status
 
+from app.backend.core.security import get_current_user
 from app.backend.schemas.chat import ChatRequest, ChatResponse
 from app.backend.services.dispute_service import DisputeService
 
@@ -10,21 +11,12 @@ def get_dispute_service() -> DisputeService:
     return DisputeService()
 
 
-@router.post(
-    "/chat",
-    response_model=ChatResponse,
-    status_code=status.HTTP_200_OK,
-    summary="Process customer chat message through graph execution engine",
-)
+@router.post("/chat", response_model=ChatResponse, status_code=status.HTTP_200_OK)
 async def process_chat(
     request: ChatRequest,
+    current_user: dict = Depends(get_current_user),
     service: DisputeService = Depends(get_dispute_service),
 ) -> ChatResponse:
-    try:
-        response = await service.process_chat_message(request)
-        return response
-    except Exception as exc:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error processing chat request: {str(exc)}",
-        )
+    return await service.process_chat_message(
+        request=request, customer_id=current_user["customer_id"]
+    )

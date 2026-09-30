@@ -1,5 +1,5 @@
 import asyncio
-from typing import Any
+from typing import Any, Optional
 
 from app.backend.core.graph_scheduler import GraphColoringScheduler
 from app.backend.schemas.chat import (
@@ -28,7 +28,9 @@ class DisputeService:
     def __init__(self):
         pass
 
-    async def process_chat_message(self, request: ChatRequest) -> ChatResponse:
+    async def process_chat_message(
+        self, request: ChatRequest, customer_id: Optional[str] = None
+    ) -> ChatResponse:
         """
         Process incoming chat, execute fast-path or LLM routing,
         and run graph task scheduler.
