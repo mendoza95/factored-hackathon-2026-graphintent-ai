@@ -1,7 +1,5 @@
 import pytest
 from httpx import AsyncClient
-from app.backend.main import app
-
 
 
 @pytest.mark.asyncio
