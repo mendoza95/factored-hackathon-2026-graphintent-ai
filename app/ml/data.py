@@ -26,7 +26,7 @@ def assign_target_label(row: pd.Series) -> str:
     contact_reason = str(row.get("contact_reason", "")).lower()
     was_escalated = row.get("was_escalated", False)
 
-    if contact_reason in ["queja", "transaccional"]:
+    if contact_reason in ["queja", "transaccional", "complaint"]:
         return "dispute_initiate"
     elif was_escalated is True:
         return "human_handoff"
@@ -41,8 +41,8 @@ def load_and_prepare_data(data_dir: Path) -> pd.DataFrame:
     """
     con = duckdb.connect()
 
-    # Query DuckDB across partition files
-    query = f"""
+    # 1. Query Call Center Interactions
+    query_interactions = f"""
         SELECT 
             t.full_text,
             t.detected_keywords,
@@ -61,10 +61,35 @@ def load_and_prepare_data(data_dir: Path) -> pd.DataFrame:
             ON t.interaction_id = i.interaction_id
         WHERE t.full_text IS NOT NULL AND LENGTH(TRIM(t.full_text)) > 0
     """
+    df_interactions = con.sql(query_interactions).df()
 
-    df = con.sql(query).df()
+    # 2. Query Complaints Data (Treated as In-Domain Dispute Training Rows)
+    query_complaints = f"""
+        SELECT 
+            c.description AS full_text,
+            c.category AS detected_keywords,
+            c.subcategory AS detected_intents,
+            c.case_type AS main_topics,
+            'chat' AS channel,
+            'negative' AS detected_sentiment,
+            0.0 AS duration_seconds,
+            0.0 AS wait_time_seconds,
+            -0.8 AS sentiment_score,
+            'complaint' AS contact_reason,
+            FALSE AS was_escalated,
+            c.customer_id
+        FROM '{data_dir}/complaints/*.csv' c
+        WHERE c.description IS NOT NULL AND LENGTH(TRIM(c.description)) > 0
+    """
+    try:
+        df_complaints = con.sql(query_complaints).df()
+    except Exception:
+        df_complaints = pd.DataFrame()
 
-    # Pre-fill text columns
+    # 3. Concatenate both DataFrames vertically
+    df = pd.concat([df_interactions, df_complaints], ignore_index=True)
+
+    # Fill missing text columns
     for col in TEXT_COLS:
         df[col] = df[col].fillna("")
 
@@ -79,7 +104,7 @@ def load_and_prepare_data(data_dir: Path) -> pd.DataFrame:
         + df["main_topics"]
     )
 
-    # Historical complaint flag (feature engineering)
+    # Flag historical complaint customers
     complaints_query = f"""
         SELECT DISTINCT customer_id 
         FROM '{data_dir}/complaints/*.csv' 
@@ -94,7 +119,7 @@ def load_and_prepare_data(data_dir: Path) -> pd.DataFrame:
 
     df["has_past_complaint"] = df["customer_id"].astype(str).isin(complaint_customers)
 
-    # Target label generation
+    # Generate target labels
     df["label"] = df.apply(assign_target_label, axis=1)
 
     return df

@@ -45,7 +45,7 @@ class IntentPredictor:
 
         data = {
             "rich_text": [rich_text],
-            "channel": [raw_payload.get("channel", "unknown")],
+            "channel": [raw_payload.get("channel", "chat")],
             "detected_sentiment": [raw_payload.get("detected_sentiment", "neutral")],
             "duration_seconds": [raw_payload.get("duration_seconds", 0.0)],
             "wait_time_seconds": [raw_payload.get("wait_time_seconds", 0.0)],

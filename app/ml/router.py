@@ -10,7 +10,7 @@ MODEL_PATH = BASE_DIR / "ml" / "models" / "intent_classifier.joblib"
 # Initialize predictor globally for fast cold-starts
 predictor = IntentPredictor(model_path=MODEL_PATH)
 
-CONFIDENCE_THRESHOLD = 0.60
+CONFIDENCE_THRESHOLD = 0.65
 
 # Operational action mapping
 INTENT_TO_ACTION = {
@@ -60,8 +60,7 @@ def route_intent_event(event_payload: Dict[str, Any]) -> Dict[str, Any]:
 if __name__ == "__main__":
     # Test High-Confidence Dispute Case
     dispute_sample = {
-        "full_text": "Quiero poner una queja formal por un "
-        "cobro duplicado en mi tarjeta.",
+        "full_text": "No reconozco un cargo de $150 USD en mi tarjeta ",
         "detected_keywords": "queja, cobro duplicado",
         "detected_intents": "reclamo",
         "main_topics": "transacción",

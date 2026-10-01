@@ -39,10 +39,14 @@ class DisputeService:
         scheduler = GraphColoringScheduler()
 
         # 1. Run Hybrid Orchestrator (Sub-10ms Fast-Path ML or LLM Fallback)
+        # In dispute_service.py
+        effective_customer_id = (
+            customer_id or getattr(request, "customer_id", None) or "CUST_12345"
+        )
         payload = {
             "full_text": request.message,
             "channel": getattr(request, "channel", "chat"),
-            "customer_id": request.customer_id,
+            "customer_id": effective_customer_id,
         }
 
         orch_result = process_interaction_event(

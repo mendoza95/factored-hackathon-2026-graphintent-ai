@@ -16,7 +16,10 @@ from app.ml.data import FEATURE_COLS, load_and_prepare_data
 def build_pipeline() -> Pipeline:
     """Construct the multi-feature ColumnTransformer classification pipeline."""
     text_transformer = TfidfVectorizer(
-        ngram_range=(1, 2), max_features=3000, sublinear_tf=True
+        ngram_range=(1, 3),
+        max_features=5000,
+        sublinear_tf=True,
+        strip_accents="unicode",
     )
 
     categorical_cols = ["channel", "detected_sentiment", "has_past_complaint"]
