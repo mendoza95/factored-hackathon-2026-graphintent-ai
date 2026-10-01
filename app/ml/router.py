@@ -12,11 +12,10 @@ predictor = IntentPredictor(model_path=MODEL_PATH)
 
 CONFIDENCE_THRESHOLD = 0.65
 
-# Operational action mapping
-INTENT_TO_ACTION = {
-    "dispute_initiate": "INITIATE_DISPUTE_WORKFLOW",
-    "human_handoff": "ESCALATE_TO_HUMAN",
-    "account_inquiry": "EXECUTE_ACCOUNT_INQUIRY",
+INTENT_CONFIG = {
+    0: {"name": "dispute_initiate", "action": "INITIATE_DISPUTE_WORKFLOW"},
+    1: {"name": "human_handoff", "action": "ESCALATE_TO_HUMAN"},
+    2: {"name": "account_inquiry", "action": "EXECUTE_ACCOUNT_INQUIRY"},
 }
 
 
@@ -32,12 +31,14 @@ def route_intent_event(event_payload: Dict[str, Any]) -> Dict[str, Any]:
     confidence = prediction["confidence"]
     latency_ms = round((time.perf_counter() - start_time) * 1000, 2)
 
+    default_config = {"name": "unsupported", "action": "COLLECT_MORE_INFO"}
+
     # Low-confidence fallback path
     if confidence < CONFIDENCE_THRESHOLD:
         return {
             "source": "DETERMINISTIC_FAST_PATH",
             "routing_action": "LLM_FALLBACK",
-            "action": "COLLECT_MORE_INFO",
+            "action": default_config["action"],
             "confidence": round(confidence, 4),
             "latency_ms": latency_ms,
             "reason": f"Low confidence ({confidence:.2f} < {CONFIDENCE_THRESHOLD})",
@@ -45,12 +46,15 @@ def route_intent_event(event_payload: Dict[str, Any]) -> Dict[str, Any]:
         }
 
     # High-confidence deterministic fast-path
-    operational_action = INTENT_TO_ACTION.get(predicted_intent, "COLLECT_MORE_INFO")
+
+    intent_info = INTENT_CONFIG.get(predicted_intent, default_config)
+    # operational_action = INTENT_TO_ACTION.get(predicted_intent, "COLLECT_MORE_INFO")
+    print(intent_info["action"])
 
     return {
         "source": "DETERMINISTIC_FAST_PATH",
         "routing_action": "EXECUTE_ACTION",
-        "action": operational_action,
+        "action": intent_info["action"],
         "confidence": round(confidence, 4),
         "latency_ms": latency_ms,
         "class_probabilities": prediction["class_probabilities"],

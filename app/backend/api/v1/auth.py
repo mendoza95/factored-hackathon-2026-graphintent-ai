@@ -30,3 +30,10 @@ async def login(credentials: LoginRequest, db: BaseDatabase = Depends(get_db)):
         }
     )
     return TokenResponse(access_token=access_token)
+
+
+@router.get("/token")
+def get_test_token():
+    # Creates a valid token using your actual secret key and encoding rules
+    token = create_access_token(data={"sub": "CUST_12345"})
+    return {"access_token": token}
