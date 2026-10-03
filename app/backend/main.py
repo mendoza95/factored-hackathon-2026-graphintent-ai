@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.backend.api.v1.auth import router as auth_router
 from app.backend.api.v1.chat import router as chat_router
+from app.backend.api.v1.dispute import router as dispute_router
 
 app = FastAPI(
     title="Dispute Agent AI API",
@@ -20,6 +21,7 @@ app.add_middleware(
 
 app.include_router(auth_router, prefix="/api/v1")
 app.include_router(chat_router)
+app.include_router(dispute_router)
 
 
 @app.get("/health", tags=["Health"])

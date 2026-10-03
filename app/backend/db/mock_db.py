@@ -6,7 +6,11 @@ from typing import Optional
 import pandas as pd
 
 from app.backend.db.base import BaseDatabase
-from app.backend.schemas.dispute import ComplaintSchema, TransactionSchema
+from app.backend.schemas.dispute import (
+    ComplaintSchema,
+    Transaction,
+    TransactionSchema,
+)
 
 
 class MockDatabase(BaseDatabase):
@@ -45,7 +49,7 @@ class MockDatabase(BaseDatabase):
             loaded_any = True
 
         # 3. Load Transactions
-        tx_file = self.data_dir / "transactions_sample.csv"
+        tx_file = self.data_dir / "transactions.csv"
         if tx_file.exists():
             df_tx = pd.read_csv(tx_file)
             for _, row in df_tx.iterrows():
@@ -88,7 +92,7 @@ class MockDatabase(BaseDatabase):
             loaded_any = True
 
         # 4. Load Complaints
-        complaints_file = self.data_dir / "complaints_sample.csv"
+        complaints_file = self.data_dir / "complaints.csv"
         if complaints_file.exists():
             df_comp = pd.read_csv(complaints_file)
             for _, row in df_comp.iterrows():
@@ -136,7 +140,6 @@ class MockDatabase(BaseDatabase):
         """Seed default mock records if CSVs are missing."""
         cust_id = "CUST_12345"
         prod_id = "PROD_CARD_01"
-        tx_id = "TX_998877"
 
         self._customers[cust_id] = {
             "customer_id": cust_id,
@@ -159,22 +162,60 @@ class MockDatabase(BaseDatabase):
             "product_status": "Active",
         }
 
-        self._transactions[tx_id] = TransactionSchema(
-            transaction_id=tx_id,
-            transaction_date=datetime.now(),
-            product_id=prod_id,
-            customer_id=cust_id,
-            transaction_type="Purchase",
-            amount=Decimal("150.00"),
-            currency="USD",
-            amount_usd=Decimal("150.00"),
-            merchant_name="Unknown Store Online",
-            merchant_category="Digital Goods",
-            transaction_country="Mexico",
-            transaction_status="Approved",
-            is_fraud=False,
-            fraud_score=Decimal("12.5"),
-        )
+        # Seed mock transactions
+        mock_txs = [
+            TransactionSchema(
+                transaction_id="TX_1001",
+                transaction_date=datetime(2026, 10, 1),
+                product_id=prod_id,
+                customer_id=cust_id,
+                transaction_type="Purchase",
+                amount=Decimal("45.50"),
+                currency="USD",
+                amount_usd=Decimal("45.50"),
+                merchant_name="Uber Trip",
+                merchant_category="Transportation",
+                transaction_country="Mexico",
+                transaction_status="Approved",
+                is_fraud=False,
+                fraud_score=Decimal("2.1"),
+            ),
+            TransactionSchema(
+                transaction_id="TX_1002",
+                transaction_date=datetime(2026, 9, 28),
+                product_id=prod_id,
+                customer_id=cust_id,
+                transaction_type="Purchase",
+                amount=Decimal("150.00"),
+                currency="USD",
+                amount_usd=Decimal("150.00"),
+                merchant_name="Unknown Electronics Store",
+                merchant_category="Digital Goods",
+                transaction_country="Mexico",
+                transaction_status="Approved",
+                is_fraud=False,
+                fraud_score=Decimal("12.5"),
+            ),
+            TransactionSchema(
+                transaction_id="TX_1003",
+                transaction_date=datetime(2026, 9, 25),
+                product_id=prod_id,
+                customer_id=cust_id,
+                transaction_type="Purchase",
+                amount=Decimal("4.75"),
+                currency="USD",
+                amount_usd=Decimal("4.75"),
+                merchant_name="Coffee Shop",
+                merchant_category="Food & Beverage",
+                transaction_country="Mexico",
+                transaction_status="Approved",
+                is_fraud=False,
+                fraud_score=Decimal("0.5"),
+            ),
+        ]
+
+        for tx in mock_txs:
+            self._transactions[tx.transaction_id] = tx
 
     # --- Public Methods ---
 
@@ -201,8 +242,6 @@ class MockDatabase(BaseDatabase):
 
         return None
 
-    # --- Public Methods ---
-
     def get_customer(self, customer_id: str) -> Optional[dict]:
         return self._customers.get(customer_id)
 
@@ -216,6 +255,31 @@ class MockDatabase(BaseDatabase):
         return [
             tx for tx in self._transactions.values() if tx.customer_id == customer_id
         ]
+
+    def get_frontend_transactions(self) -> list[Transaction]:
+        """Convert stored transactions into lightweight frontend Transaction objects."""
+        frontend_list = []
+        for tx in self._transactions.values():
+            status = "disputed" if tx.transaction_status == "Reversed" else "posted"
+            frontend_list.append(
+                Transaction(
+                    id=tx.transaction_id,
+                    merchant=tx.merchant_name or "Unknown Merchant",
+                    amount=float(tx.amount),
+                    currency=tx.currency,
+                    date=tx.transaction_date.strftime("%b %d, %Y"),
+                    status=status,
+                )
+            )
+        return frontend_list
+
+    def update_transaction_status(self, transaction_id: str, new_status: str) -> bool:
+        """Update transaction status in mock store."""
+        tx = self.get_transaction(transaction_id)
+        if tx:
+            tx.transaction_status = new_status
+            return True
+        return False
 
     def create_complaint(self, complaint: ComplaintSchema) -> ComplaintSchema:
         self._complaints[complaint.complaint_id] = complaint

@@ -27,7 +27,7 @@ class DisputeStatus(str, Enum):
     REJECTED = "Rejected"
 
 
-# --- Transaction Model ---
+# --- Transaction Model (DB Schema) ---
 class TransactionSchema(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -47,7 +47,30 @@ class TransactionSchema(BaseModel):
     fraud_score: Optional[Decimal] = None
 
 
-# --- Dispute Payload (Internal State) ---
+# --- Lightweight Transaction Model (Frontend API Contract) ---
+class Transaction(BaseModel):
+    id: str
+    merchant: str
+    amount: float
+    currency: str
+    date: str
+    status: str
+
+
+# --- Dispute Request Payloads ---
+class DisputeRequest(BaseModel):
+    transaction_id: str
+    reason: str
+    details: Optional[str] = ""
+
+
+class DisputeResponse(BaseModel):
+    reference_id: str
+    transaction_id: str
+    status: str
+    message: str
+
+
 class DisputeCreate(BaseModel):
     customer_id: str
     affected_product_id: str
@@ -56,8 +79,9 @@ class DisputeCreate(BaseModel):
     currency: str
     reason: str = Field(
         ...,
-        description="Reason provided by user in Spanish (e.g., "
-        "'Unrecognized transaction')",
+        description=(
+            "Reason provided by user in Spanish (e.g., 'Unrecognized transaction')"
+        ),
     )
     detected_country: CountryEnum
     detected_accent: Optional[str] = None

@@ -72,7 +72,7 @@ class IntentPredictor:
         }
 
         return {
-            "predicted_intent": predicted_label,
+            "predicted_label": predicted_label,
             "confidence": float(max(probabilities)),
             "class_probabilities": confidence_scores,
         }

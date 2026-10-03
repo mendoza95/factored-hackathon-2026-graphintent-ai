@@ -27,7 +27,7 @@ def route_intent_event(event_payload: Dict[str, Any]) -> Dict[str, Any]:
     start_time = time.perf_counter()
 
     prediction = predictor.predict(event_payload)
-    predicted_intent = prediction["predicted_intent"]
+    predicted_label = prediction["predicted_label"]
     confidence = prediction["confidence"]
     latency_ms = round((time.perf_counter() - start_time) * 1000, 2)
 
@@ -47,7 +47,7 @@ def route_intent_event(event_payload: Dict[str, Any]) -> Dict[str, Any]:
 
     # High-confidence deterministic fast-path
 
-    intent_info = INTENT_CONFIG.get(predicted_intent, default_config)
+    intent_info = INTENT_CONFIG.get(predicted_label, default_config)
     # operational_action = INTENT_TO_ACTION.get(predicted_intent, "COLLECT_MORE_INFO")
     print(intent_info["action"])
 
