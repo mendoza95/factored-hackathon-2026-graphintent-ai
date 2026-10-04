@@ -5,10 +5,10 @@ from app.backend.core.graph_scheduler import GraphColoringScheduler
 from app.backend.schemas.chat import (
     ChatRequest,
     ChatResponse,
-    HandoffContext,
     IntentEnum,
     OptimizationMetadata,
 )
+from app.backend.services.guardrail_service import guardrail_service
 from app.backend.services.llm_service import llm_service
 from app.backend.services.orchestrator import process_interaction_event
 from app.backend.services.task_handlers import TASK_HANDLERS
@@ -35,11 +35,21 @@ class DisputeService:
         Process incoming chat, execute fast-path or LLM routing,
         and run graph task scheduler.
         """
-        # 0. We instanciate a graph scheduler to proccess the current chat message.
+        # 0. Guardrail de entrada: Sanitizar y verificar inyección de prompt
+        sanitized_message, is_safe = guardrail_service.sanitize_input(request.message)
+        if not is_safe:
+            return ChatResponse(
+                response_message="Tu mensaje contiene instrucciones no permitidas "
+                "por motivos de seguridad.",
+                intent_detected=IntentEnum.UNSUPPORTED,
+                requires_human_handoff=False,
+            )
+        request.message = sanitized_message
+
+        # Instantiate graph scheduler
         scheduler = GraphColoringScheduler()
 
         # 1. Run Hybrid Orchestrator (Sub-10ms Fast-Path ML or LLM Fallback)
-        # In dispute_service.py
         effective_customer_id = (
             customer_id or getattr(request, "customer_id", None) or "CUST_12345"
         )
@@ -49,7 +59,7 @@ class DisputeService:
             "customer_id": effective_customer_id,
         }
 
-        orch_result = process_interaction_event(
+        orch_result = await process_interaction_event(
             event_payload=payload,
             user_accent=request.user_accent,
         )
@@ -58,9 +68,9 @@ class DisputeService:
         intent = ACTION_TO_INTENT_MAP.get(action, IntentEnum.UNSUPPORTED)
 
         # Extract entities using LLM service or fast-path regex
-        entities = orch_result.get(
-            "extracted_entities"
-        ) or llm_service.classify_and_extract_llm(request.message)
+        entities = orch_result.get("extracted_entities")
+        if not entities:
+            entities = await llm_service.classify_and_extract_llm(request.message)
 
         # 2. Build task dependency graph based on predicted operational action
         self._build_task_graph(scheduler, action, entities)
@@ -73,8 +83,8 @@ class DisputeService:
             batch_schedule, request, entities
         )
 
-        # 4. Check guardrails for human handoff
-        requires_handoff, handoff_details = self._evaluate_guardrails(
+        # 4. Check business guardrails for human handoff
+        requires_handoff, handoff_details = guardrail_service.evaluate_guardrails(
             action, execution_context
         )
 
@@ -87,9 +97,12 @@ class DisputeService:
                 context=execution_context,
             )
 
+        # Guardrail de salida: Validar que no prometa devoluciones no autorizadas
+        final_response_message = guardrail_service.validate_output(response_text)
+
         # 6. Assemble response object including hybrid router & scheduler metrics
         return ChatResponse(
-            response_message=response_text,
+            response_message=final_response_message,
             intent_detected=intent,
             dispute_id=execution_context.get("dispute_id"),
             requires_human_handoff=requires_handoff,
@@ -99,8 +112,9 @@ class DisputeService:
                 graph_edges_count=metrics["edges_count"],
                 chromatic_number=metrics["chromatic_number"],
                 execution_batches=batch_schedule,
-                total_execution_time_ms=metrics["total_execution_time_ms"]
-                + orch_result["latency_ms"],
+                total_execution_time_ms=round(
+                    metrics["total_execution_time_ms"] + orch_result["latency_ms"], 2
+                ),
             ),
         )
 
@@ -146,11 +160,9 @@ class DisputeService:
             "entities": entities,
         }
 
-        # Process batches sequentially (Batch 0, then Batch 1, etc.)
         for batch_id in sorted(batch_schedule.keys()):
             node_names = batch_schedule[batch_id]
 
-            # Gather tasks within the current batch to execute concurrently
             tasks = []
             for name in node_names:
                 handler = TASK_HANDLERS.get(name)
@@ -161,35 +173,6 @@ class DisputeService:
                 await asyncio.gather(*tasks)
 
         return context
-
-    def _evaluate_guardrails(
-        self, action: str, context: dict
-    ) -> tuple[bool, HandoffContext]:
-        """Evaluate business guardrails for human handoff."""
-        if action == "ESCALATE_TO_HUMAN":
-            return True, HandoffContext(
-                is_escalated=True,
-                reason="User explicitly requested a human specialist",
-                verified_facts={"customer_id": context.get("customer_id")},
-                unresolved_questions=["What specific issue requires agent assistance?"],
-            )
-
-        claimed_amt = context.get("entities", {}).get("claimed_amount")
-        if claimed_amt and claimed_amt > 1000.0:
-            return True, HandoffContext(
-                is_escalated=True,
-                reason="Claimed dispute amount exceeds automated"
-                " threshold ($1,000 USD)",
-                verified_facts={
-                    "customer_id": context.get("customer_id"),
-                    "claimed_amount": claimed_amt,
-                },
-                unresolved_questions=[
-                    "Manual supervisor approval needed for high-value claim"
-                ],
-            )
-
-        return False, HandoffContext(is_escalated=False)
 
 
 # Global service instance

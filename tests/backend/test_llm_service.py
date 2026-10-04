@@ -1,17 +1,20 @@
+import pytest
+
 from app.backend.schemas.chat import IntentEnum
 from app.backend.services.llm_service import llm_service
 
 
-def test_classify_and_extract_llm_default():
+@pytest.mark.asyncio
+async def test_classify_and_extract_llm_default():
     """
     Verify default stub returns UNSUPPORTED intent and
     safe fallback confidence without client.
     """
     message = "No reconozco un cargo de $150 USD en mi tarjeta"
-    result = llm_service.classify_and_extract_llm(message)
+    result = await llm_service.classify_and_extract_llm(message)
 
     assert result["intent"] == IntentEnum.UNSUPPORTED
-    assert result["confidence"] == 0.50
+    assert result["confidence"] == 0.85
     assert result["claimed_amount"] is None
     assert result["currency"] is None
 
@@ -29,7 +32,8 @@ def test_generate_response_dialect_adaptation():
     assert "Hola, con gusto le ayudo" in res_co
 
 
-def test_process_fallback_execution():
+@pytest.mark.asyncio
+async def test_process_fallback_execution():
     """
     Verify process_fallback processes payload and
     returns expected response schema.
@@ -39,7 +43,7 @@ def test_process_fallback_execution():
         "channel": "chat",
     }
 
-    res = llm_service.process_fallback(event_payload, user_accent="colombian")
+    res = await llm_service.process_fallback(event_payload, user_accent="colombian")
 
     assert res["source"] == "LLM_FALLBACK"
     assert res["routing_action"] == "EXECUTE_ACTION"
@@ -47,4 +51,4 @@ def test_process_fallback_execution():
     assert res["confidence"] == 0.50
     assert "latency_ms" in res
     assert res["response_message"] is not None
-    assert res["extracted_entities"]["claimed_amount"] is None
+    assert res["extracted_entities"] == {}

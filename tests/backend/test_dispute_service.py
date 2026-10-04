@@ -1,9 +1,82 @@
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from app.backend.schemas.chat import ChatRequest, IntentEnum
 from app.backend.services.dispute_service import dispute_service
+
+
+@pytest.mark.asyncio
+@patch("app.backend.services.dispute_service.llm_service")
+@patch("app.backend.services.dispute_service.process_interaction_event")
+async def test_dispute_fallback_to_llm_when_no_entities(
+    mock_orchestrator, mock_llm_service
+):
+    """
+    Verifica que si el orquestador no extrae entidades,
+    se ejecute await sobre classify_and_extract_llm correctamente.
+    """
+    # 1. Simular que el orquestador no entrega entidades
+    mock_orchestrator.return_value = {
+        "action": "COLLECT_MORE_INFO",
+        "response_message": "¿Cuál es el monto de la transacción?",
+        "latency_ms": 3.0,
+        "extracted_entities": None,
+    }
+
+    # 2. Configurar el mock del servicio LLM como un AsyncMock explícito
+    mock_llm_service.classify_and_extract_llm = AsyncMock(
+        return_value={"claimed_amount": 80.00, "currency": "USD"}
+    )
+
+    request = ChatRequest(
+        customer_id="CUST_12345",
+        session_id="SESS_5050",
+        message="Creo que me cobraron de más en la tienda.",
+        user_accent="mexican",
+    )
+
+    response = await dispute_service.process_chat_message(request)
+
+    # 3. Aserciones del flujo y verificación del call asíncrono
+    mock_llm_service.classify_and_extract_llm.assert_awaited_once_with(request.message)
+    assert response.intent_detected == IntentEnum.UNSUPPORTED
+    assert response.requires_human_handoff is False
+
+
+@pytest.mark.asyncio
+@patch("app.backend.services.dispute_service.llm_service")
+@patch("app.backend.services.dispute_service.process_interaction_event")
+async def test_dispute_fallback_high_amount_extracted_by_llm(
+    mock_orchestrator, mock_llm_service
+):
+    """
+    Verifica que las entidades extraídas por el LLM en el fallback
+    activen los guardrails de monto alto (> $1,000 USD).
+    """
+    mock_orchestrator.return_value = {
+        "action": "INITIATE_DISPUTE_WORKFLOW",
+        "response_message": "Analizando la transacción...",
+        "latency_ms": 4.0,
+        "extracted_entities": {},
+    }
+
+    mock_llm_service.classify_and_extract_llm = AsyncMock(
+        return_value={"claimed_amount": 1500.00, "currency": "USD"}
+    )
+
+    request = ChatRequest(
+        customer_id="CUST_12345",
+        session_id="SESS_6060",
+        message="Tengo un cobro raro de mil quinientos dólares.",
+        user_accent="mexican",
+    )
+
+    response = await dispute_service.process_chat_message(request)
+
+    mock_llm_service.classify_and_extract_llm.assert_awaited_once_with(request.message)
+    assert response.requires_human_handoff is True
+    assert response.handoff_details.is_escalated is True
 
 
 @pytest.mark.asyncio

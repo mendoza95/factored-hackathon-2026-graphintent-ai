@@ -5,6 +5,7 @@ import type { Message } from "./ChatMessage";
 import { TransactionCard } from "./TransactionCard";
 import type { Transaction } from "../types/transaction";
 import { DisputeModal } from "./DisputeModal";
+import { createDispute } from "../api/dispute";
 
 export const ChatBox: React.FC = () => {
   const [messages, setMessages] = useState<Message[]>([
@@ -61,26 +62,35 @@ export const ChatBox: React.FC = () => {
     reason: string;
     details: string;
   }) => {
-    // 1. Update status locally
-    setMockTransactions((prev) =>
-      prev.map((tx) =>
-        tx.id === disputeData.transactionId ? { ...tx, status: "disputed" } : tx
-      )
-    );
+    try {
+      // Send real dispute request to FastAPI
+      const result = await createDispute({
+        transaction_id: disputeData.transactionId,
+        reason: disputeData.reason,
+        details: disputeData.details,
+      });
 
-    // 2. Append confirmation message to chat
-    const refId = `DISP-${Math.floor(100000 + Math.random() * 900000)}`;
-    const confirmMessage: Message = {
-      id: Date.now().toString(),
-      sender: "assistant",
-      text: `Your dispute claim for transaction ${disputeData.transactionId} has been successfully submitted.\n\n` +
-            `• Reference ID: ${refId}\n` +
-            `• Reason: ${disputeData.reason}\n` +
-            `• Status: Under Review`,
-      action: "CONFIRM_DISPUTE",
-    };
+      // Update state locally
+      setMockTransactions((prev) =>
+        prev.map((tx) =>
+          tx.id === disputeData.transactionId ? { ...tx, status: "disputed" } : tx
+        )
+      );
 
-    setMessages((prev) => [...prev, confirmMessage]);
+      const confirmMessage: Message = {
+        id: Date.now().toString(),
+        sender: "assistant",
+        text: `Your dispute claim for transaction ${disputeData.transactionId} has been successfully submitted.\n\n` +
+              `• Reference ID: ${result.dispute_id || 'DISP-SUCCESS'}\n` +
+              `• Reason: ${disputeData.reason}\n` +
+              `• Status: Under Review`,
+        action: "CONFIRM_DISPUTE",
+      };
+
+      setMessages((prev) => [...prev, confirmMessage]);
+    } catch (err: any) {
+      alert(`Error submitting dispute: ${err.message}`);
+    }
   };
 
   const handleSend = async (e: React.FormEvent) => {
@@ -109,7 +119,7 @@ export const ChatBox: React.FC = () => {
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
         sender: "assistant",
-        text: response.message || "Request processed.",
+        text: response.message || response.response_message || "Request processed.",
         intent: response.intent_detected,
         action: response.action,
         confidence: response.confidence,

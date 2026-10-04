@@ -5,7 +5,7 @@ from app.backend.services.llm_service import llm_service
 from app.ml.router import route_intent_event
 
 
-def process_interaction_event(
+async def process_interaction_event(
     event_payload: Dict[str, Any],
     user_accent: Optional[str] = "mexican",
 ) -> Dict[str, Any]:
@@ -32,7 +32,7 @@ def process_interaction_event(
         }
 
     # Step 2: Low-Confidence LLM Fallback Execution
-    fallback_result = llm_service.process_fallback(
+    fallback_result = await llm_service.process_fallback(
         event_payload=event_payload, user_accent=user_accent
     )
 
