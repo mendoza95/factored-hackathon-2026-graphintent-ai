@@ -25,6 +25,7 @@ dependencies = [
     "scipy>=1.11.0",
     "threadpoolctl>=3.2.0",
     "huggingface-hub>=2.1.1",
+    "dotenv>=0.9.9",
 ]
 
 [project.optional-dependencies]
