@@ -7,6 +7,7 @@ from app.backend.core.security import get_current_user
 from app.backend.db.base import BaseDatabase
 from app.backend.db.deps import get_db
 from app.backend.schemas.dispute import DisputeRequest, DisputeResponse, Transaction
+from app.backend.services.session_service import session_service  # <--- Importante
 
 router = APIRouter(prefix="/api/v1", tags=["disputes"])
 
@@ -30,8 +31,13 @@ async def submit_dispute(
     if not tx:
         raise HTTPException(status_code=404, detail="Transaction not found")
 
+    # 1. Actualiza la base de datos en memoria
     db.update_transaction_status(payload.transaction_id, "Reversed")
     ref_id = f"DISP-{random.randint(100000, 999999)}"
+
+    # 2. Actualiza la sesión del chat
+    session_id = getattr(payload, "session_id", None) or "SESS_FE_MAIN"
+    session_service.add_disputed_transaction(session_id, str(payload.transaction_id))
 
     return DisputeResponse(
         reference_id=ref_id,

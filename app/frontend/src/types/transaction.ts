@@ -6,4 +6,5 @@ export interface Transaction {
   date: string;
   status: "posted" | "pending" | "disputed";
   category?: string;
+  already_disputed?: boolean;
 }

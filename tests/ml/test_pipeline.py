@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from app.backend.services.llm_service import llm_service
 from app.backend.services.orchestrator import process_interaction_event
 from app.ml.data import load_and_prepare_data
@@ -36,7 +38,7 @@ def test_predict_inference():
         "has_past_complaint": True,
     }
     res = predictor.predict(sample_payload)
-    assert res["predicted_intent"] == "dispute_initiate"
+    assert res["predicted_label"] == "dispute_initiate"
     assert res["confidence"] > 0.60
 
 
@@ -71,19 +73,23 @@ def test_router_llm_fallback_trigger():
     assert route_res["routing_action"] == "LLM_FALLBACK"
 
 
-def test_unified_workflow_execution():
+@pytest.mark.asyncio
+async def test_unified_workflow_execution():
     """Test full flow: router check -> LLM fallback execution."""
     payload = {"full_text": "Hola buenas tardes", "channel": "chat"}
     route_res = route_intent_event(payload)
 
     if route_res["routing_action"] == "LLM_FALLBACK":
-        final_res = llm_service.process_fallback(payload)
+        final_res = await llm_service.process_fallback(payload)
         assert final_res["source"] == "LLM_FALLBACK"
         assert final_res["action"] == "COLLECT_MORE_INFO"
         assert "response_message" in final_res
 
 
-def test_orchestrator_fast_path_and_fallback():
+pytest.mark.asyncio
+
+
+async def test_orchestrator_fast_path_and_fallback():
     """
     Verify orchestrator correctly selects fast path
     or fallback based on confidence.
@@ -99,12 +105,12 @@ def test_orchestrator_fast_path_and_fallback():
         "sentiment_score": -0.8,
         "has_past_complaint": True,
     }
-    res_fast = process_interaction_event(dispute_payload)
+    res_fast = await process_interaction_event(dispute_payload)
     assert res_fast["source"] == "DETERMINISTIC_FAST_PATH"
     assert res_fast["action"] == "INITIATE_DISPUTE_WORKFLOW"
 
     # Ambiguous payload -> LLM fallback path
     ambiguous_payload = {"full_text": "Hola buenas tardes", "channel": "chat"}
-    res_fallback = process_interaction_event(ambiguous_payload)
+    res_fallback = await process_interaction_event(ambiguous_payload)
     assert res_fallback["source"] == "LLM_FALLBACK"
     assert res_fallback["action"] == "COLLECT_MORE_INFO"

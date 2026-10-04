@@ -9,7 +9,11 @@ export const createDispute = async (disputeData: {
   transaction_id: string;
   reason: string;
   details?: string;
+  session_id?: string;
 }) => {
-  const response = await apiClient.post("/disputes", disputeData);
+  const response = await apiClient.post("/disputes", {
+    session_id: "SESS_FE_MAIN",
+    ...disputeData,
+  });
   return response.data;
 };

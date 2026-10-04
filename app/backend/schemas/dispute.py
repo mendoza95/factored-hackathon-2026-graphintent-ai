@@ -62,6 +62,7 @@ class DisputeRequest(BaseModel):
     transaction_id: str
     reason: str
     details: Optional[str] = ""
+    session_id: Optional[str] = "default_session"
 
 
 class DisputeResponse(BaseModel):

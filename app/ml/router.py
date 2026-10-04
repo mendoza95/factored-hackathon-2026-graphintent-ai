@@ -12,10 +12,16 @@ predictor = IntentPredictor(model_path=MODEL_PATH)
 
 CONFIDENCE_THRESHOLD = 0.65
 
-INTENT_CONFIG = {
-    0: {"name": "dispute_initiate", "action": "INITIATE_DISPUTE_WORKFLOW"},
-    1: {"name": "human_handoff", "action": "ESCALATE_TO_HUMAN"},
-    2: {"name": "account_inquiry", "action": "EXECUTE_ACCOUNT_INQUIRY"},
+# INTENT_CONFIG = {
+#    0: {"name": "dispute_initiate", "action": "INITIATE_DISPUTE_WORKFLOW"},
+#    1: {"name": "human_handoff", "action": "ESCALATE_TO_HUMAN"},
+#    2: {"name": "account_inquiry", "action": "EXECUTE_ACCOUNT_INQUIRY"},
+# }
+
+LABEL_CONFIG = {
+    "dispute_initiate": {"action": "INITIATE_DISPUTE_WORKFLOW"},
+    "human_handoff": {"action": "ESCALATE_TO_HUMAN"},
+    "account_inquiry": {"action": "EXECUTE_ACCOUNT_INQUIRY"},
 }
 
 
@@ -29,16 +35,18 @@ def route_intent_event(event_payload: Dict[str, Any]) -> Dict[str, Any]:
     prediction = predictor.predict(event_payload)
     predicted_label = prediction["predicted_label"]
     confidence = prediction["confidence"]
+    print(f"Confidence: {confidence} - Predicted label: {predicted_label}")
     latency_ms = round((time.perf_counter() - start_time) * 1000, 2)
 
-    default_config = {"name": "unsupported", "action": "COLLECT_MORE_INFO"}
+    # default_config = {"name": "unsupported", "action": "COLLECT_MORE_INFO"}
+    default_action = {"action": "COLLECT_MORE_INFO"}
 
     # Low-confidence fallback path
     if confidence < CONFIDENCE_THRESHOLD:
         return {
             "source": "DETERMINISTIC_FAST_PATH",
             "routing_action": "LLM_FALLBACK",
-            "action": default_config["action"],
+            "action": default_action["action"],
             "confidence": round(confidence, 4),
             "latency_ms": latency_ms,
             "reason": f"Low confidence ({confidence:.2f} < {CONFIDENCE_THRESHOLD})",
@@ -47,9 +55,9 @@ def route_intent_event(event_payload: Dict[str, Any]) -> Dict[str, Any]:
 
     # High-confidence deterministic fast-path
 
-    intent_info = INTENT_CONFIG.get(predicted_label, default_config)
+    intent_info = LABEL_CONFIG.get(predicted_label, default_action)
     # operational_action = INTENT_TO_ACTION.get(predicted_intent, "COLLECT_MORE_INFO")
-    print(intent_info["action"])
+    # print(intent_info["action"])
 
     return {
         "source": "DETERMINISTIC_FAST_PATH",

@@ -61,7 +61,7 @@ class GuardrailService:
                 verified_facts={"customer_id": context.get("customer_id")},
                 unresolved_questions=["What specific issue requires agent assistance?"],
             )
-
+        # print(f"Context: {context}")
         claimed_amt = context.get("entities", {}).get("claimed_amount")
         if claimed_amt and claimed_amt > 1000.0:
             return True, HandoffContext(

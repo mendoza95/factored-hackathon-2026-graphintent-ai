@@ -1,4 +1,8 @@
+// src/components/ChatMessage.tsx
+
 import React from "react";
+import { TransactionCard } from "./TransactionCard";
+import type { Transaction } from "../types/transaction";
 
 export interface Message {
   id: string;
@@ -7,26 +11,38 @@ export interface Message {
   intent?: string;
   action?: string;
   confidence?: number;
+  contextData?: {
+    transactions?: any[];
+    selectable_options?: any[];
+  };
 }
 
 interface ChatMessageProps {
   message: Message;
+  onOpenDisputeModal?: (tx: Transaction) => void;
+  onViewDisputeDetails?: (tx: Transaction) => void;
 }
 
-export const ChatMessage: React.FC<ChatMessageProps> = ({ message }) => {
+export const ChatMessage: React.FC<ChatMessageProps> = ({
+  message,
+  onOpenDisputeModal,
+  onViewDisputeDetails,
+}) => {
   const isUser = message.sender === "user";
+  const options = message.contextData?.selectable_options;
 
   return (
     <div
       style={{
         display: "flex",
-        justifyContent: isUser ? "flex-end" : "flex-start",
+        flexDirection: "column",
+        alignItems: isUser ? "flex-end" : "flex-start",
         margin: "0.75rem 0",
       }}
     >
       <div
         style={{
-          maxWidth: "75%",
+          maxWidth: "85%",
           padding: "0.75rem 1rem",
           borderRadius: "12px",
           backgroundColor: isUser ? "#2563eb" : "#f3f4f6",
@@ -35,28 +51,37 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({ message }) => {
         }}
       >
         <p style={{ margin: 0, whiteSpace: "pre-wrap" }}>{message.text}</p>
-        
-        {!isUser && message.intent && (
-          <div
-            style={{
-              marginTop: "0.5rem",
-              paddingTop: "0.5rem",
-              borderTop: "1px solid #e5e7eb",
-              fontSize: "0.75rem",
-              color: "#6b7280",
-              display: "flex",
-              gap: "0.5rem",
-              flexWrap: "wrap",
-            }}
-          >
-            <span><strong>Intent:</strong> {message.intent}</span>
-            {message.confidence !== undefined && (
-              <span><strong>Conf:</strong> {(message.confidence * 100).toFixed(0)}%</span>
-            )}
-            {message.action && <span><strong>Action:</strong> {message.action}</span>}
-          </div>
-        )}
       </div>
+
+      {!isUser && options && options.length > 0 && (
+        <div style={{ width: "85%", marginTop: "0.5rem" }}>
+          {options.map((option, index) => {
+            const isAlreadyDisputed = Boolean(
+              option.already_disputed || option.transaction_data?.already_disputed
+            );
+
+            const tx: Transaction = {
+              id: String(option.transaction_data?.id || option.value || option.id),
+              merchant: option.transaction_data?.merchant || "Transacción",
+              amount: Number(option.transaction_data?.amount || 0),
+              currency: option.transaction_data?.currency || "USD",
+              date: option.transaction_data?.timestamp || option.transaction_data?.date || "Reciente",
+              status: isAlreadyDisputed ? "disputed" : (option.transaction_data?.status || "posted"),
+              already_disputed: isAlreadyDisputed,
+            };
+
+            return (
+              <TransactionCard
+                key={option.id || index}
+                transaction={tx}
+                optionIndex={index + 1}
+                onOpenDispute={onOpenDisputeModal}
+                onViewDisputeDetails={onViewDisputeDetails}
+              />
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 };

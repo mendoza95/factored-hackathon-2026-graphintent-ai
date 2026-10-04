@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Any, Optional
+from typing import Any, Dict, Optional
 
 from pydantic import BaseModel, Field
 
@@ -52,4 +52,5 @@ class ChatResponse(BaseModel):
     dispute_id: Optional[str] = None
     requires_human_handoff: bool = False
     handoff_details: Optional[HandoffContext] = None
+    context_data: Optional[Dict[str, Any]] = None
     optimization_metrics: OptimizationMetadata

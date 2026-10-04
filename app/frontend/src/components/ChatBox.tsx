@@ -1,10 +1,12 @@
+// src/components/ChatBox.tsx
+
 import React, { useState, useRef, useEffect } from "react";
 import { sendChatMessage } from "../api/chat";
 import { ChatMessage } from "./ChatMessage";
 import type { Message } from "./ChatMessage";
-import { TransactionCard } from "./TransactionCard";
 import type { Transaction } from "../types/transaction";
 import { DisputeModal } from "./DisputeModal";
+import { DisputeDetailsModal } from "./DisputeDetailsModal";
 import { createDispute } from "../api/dispute";
 
 export const ChatBox: React.FC = () => {
@@ -12,49 +14,38 @@ export const ChatBox: React.FC = () => {
     {
       id: "1",
       sender: "assistant",
-      text: "Hello! How can I assist you with your account or disputes today?",
+      text: "¡Hola! ¿En qué puedo ayudarte con tu cuenta o disputas de transacciones hoy?",
     },
   ]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // Modal State
+  // Modal de disputas
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
-  // Mock initial transactions for testing
-  const [mockTransactions, setMockTransactions] = useState<Transaction[]>([
-    {
-      id: "TX_1001",
-      merchant: "Uber Trip",
-      amount: 45.5,
-      currency: "USD",
-      date: "Oct 01, 2026",
-      status: "posted",
-    },
-    {
-      id: "TX_1002",
-      merchant: "Unknown Electronics Store",
-      amount: 150.0,
-      currency: "USD",
-      date: "Sep 28, 2026",
-      status: "posted",
-    },
-  ]);
+  // Modal de detalles de reclamo
+  const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
+  const [disputeDetails, setDisputeDetails] = useState<{
+    referenceId: string;
+    reason: string;
+    status: string;
+  } | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
-
   useEffect(() => {
-    scrollToBottom();
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, loading]);
 
   const handleOpenDispute = (tx: Transaction) => {
     setSelectedTransaction(tx);
     setIsModalOpen(true);
+  };
+
+  const handleViewDisputeDetails = (tx: Transaction) => {
+    setSelectedTransaction(tx);
+    setIsDetailsModalOpen(true);
   };
 
   const handleSubmitDispute = async (disputeData: {
@@ -63,33 +54,52 @@ export const ChatBox: React.FC = () => {
     details: string;
   }) => {
     try {
-      // Send real dispute request to FastAPI
       const result = await createDispute({
         transaction_id: disputeData.transactionId,
         reason: disputeData.reason,
         details: disputeData.details,
       });
 
-      // Update state locally
-      setMockTransactions((prev) =>
-        prev.map((tx) =>
-          tx.id === disputeData.transactionId ? { ...tx, status: "disputed" } : tx
-        )
+      // Marca la transacción disputada en los mensajes del chat
+      setMessages((prevMessages) =>
+        prevMessages.map((msg) => {
+          if (msg.contextData?.selectable_options) {
+            const updatedOptions = msg.contextData.selectable_options.map((opt: any) => {
+              const currentId = String(opt.transaction_data?.id || opt.value || opt.id);
+              if (currentId === String(disputeData.transactionId)) {
+                return {
+                  ...opt,
+                  already_disputed: true,
+                  transaction_data: {
+                    ...opt.transaction_data,
+                    status: "disputed",
+                    already_disputed: true,
+                  },
+                };
+              }
+              return opt;
+            });
+            return {
+              ...msg,
+              contextData: {
+                ...msg.contextData,
+                selectable_options: updatedOptions,
+              },
+            };
+          }
+          return msg;
+        })
       );
 
-      const confirmMessage: Message = {
-        id: Date.now().toString(),
-        sender: "assistant",
-        text: `Your dispute claim for transaction ${disputeData.transactionId} has been successfully submitted.\n\n` +
-              `• Reference ID: ${result.dispute_id || 'DISP-SUCCESS'}\n` +
-              `• Reason: ${disputeData.reason}\n` +
-              `• Status: Under Review`,
-        action: "CONFIRM_DISPUTE",
-      };
+      setDisputeDetails({
+        referenceId: result.dispute_id || "DISP-SUCCESS",
+        reason: disputeData.reason || "unauthorized",
+        status: "En Revisión",
+      });
 
-      setMessages((prev) => [...prev, confirmMessage]);
+      setIsModalOpen(false);
     } catch (err: any) {
-      alert(`Error submitting dispute: ${err.message}`);
+      alert(`Error al enviar la disputa: ${err.message}`);
     }
   };
 
@@ -119,12 +129,14 @@ export const ChatBox: React.FC = () => {
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
         sender: "assistant",
-        text: response.message || response.response_message || "Request processed.",
+        text: response.message || response.response_message || "Solicitud procesada.",
         intent: response.intent_detected,
         action: response.action,
         confidence: response.confidence,
+        contextData: response.context_data,
       };
 
+      // Solo agregamos la respuesta a los mensajes
       setMessages((prev) => [...prev, assistantMessage]);
     } catch (err: any) {
       setMessages((prev) => [
@@ -132,7 +144,7 @@ export const ChatBox: React.FC = () => {
         {
           id: (Date.now() + 1).toString(),
           sender: "assistant",
-          text: `Error processing request: ${err.message}`,
+          text: `Error procesando la solicitud: ${err.message}`,
         },
       ]);
     } finally {
@@ -156,37 +168,17 @@ export const ChatBox: React.FC = () => {
     >
       <div style={{ flex: 1, padding: "1rem", overflowY: "auto" }}>
         {messages.map((msg) => (
-          <div key={msg.id}>
-            <ChatMessage message={msg} />
-
-            {/* Render transaction list when an INITIATE_DISPUTE_WORKFLOW action is triggered */}
-            {msg.action === "INITIATE_DISPUTE_WORKFLOW" && (
-              <div style={{ margin: "0.5rem 0 1rem 0" }}>
-                <div
-                  style={{
-                    fontSize: "0.8rem",
-                    fontWeight: 600,
-                    color: "#4b5563",
-                    marginBottom: "0.25rem",
-                  }}
-                >
-                  Select a transaction to dispute:
-                </div>
-                {mockTransactions.map((tx) => (
-                  <TransactionCard
-                    key={tx.id}
-                    transaction={tx}
-                    onSelectDispute={handleOpenDispute}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
+          <ChatMessage
+            key={msg.id}
+            message={msg}
+            onOpenDisputeModal={handleOpenDispute}
+            onViewDisputeDetails={handleViewDisputeDetails}
+          />
         ))}
 
         {loading && (
           <div style={{ color: "#9ca3af", fontStyle: "italic", fontSize: "0.875rem" }}>
-            Analyzing intent...
+            Analizando intención...
           </div>
         )}
         <div ref={messagesEndRef} />
@@ -205,7 +197,7 @@ export const ChatBox: React.FC = () => {
           type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="Type your message..."
+          placeholder="Escribe tu mensaje..."
           style={{
             flex: 1,
             padding: "0.5rem 0.75rem",
@@ -227,16 +219,24 @@ export const ChatBox: React.FC = () => {
             cursor: loading ? "not-allowed" : "pointer",
           }}
         >
-          Send
+          Enviar
         </button>
       </form>
 
-      {/* Dispute Modal */}
+      {/* Modal para crear disputa */}
       <DisputeModal
         transaction={selectedTransaction}
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         onSubmitDispute={handleSubmitDispute}
+      />
+
+      {/* Modal para ver detalles del reclamo */}
+      <DisputeDetailsModal
+        transaction={selectedTransaction}
+        disputeData={disputeDetails}
+        isOpen={isDetailsModalOpen}
+        onClose={() => setIsDetailsModalOpen(false)}
       />
     </div>
   );

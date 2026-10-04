@@ -22,7 +22,8 @@ class LLMService:
     async def classify_and_extract_llm(self, message: str) -> Dict[str, Any]:
         """
         Call LLM for structured reasoning when ML fast-path confidence is low.
-        This resolves ambiguous phrasing, indirect complaints, or multi-intent messages.
+        This resolves ambiguous phrasing,
+        indirect complaints, or multi-intent messages.
         """
         # If no client is configured, return the standard unsupported intent
         if not self.llm_client:
@@ -60,12 +61,70 @@ class LLMService:
         elif user_accent == "colombian":
             greeting = "Hola, con gusto le ayudo"
 
+        context = context or {}
+
         if intent == IntentEnum.DISPUTE_INITIATE:
-            return (
-                f"{greeting}. He registrado tu solicitud para iniciar"
-                " la disputa del cargo. Estamos validando los"
-                " detalles de la transacción."
-            )
+            entities = context.get("entities", {})
+            claimed_amount = entities.get("claimed_amount")
+            currency = entities.get("currency", "USD")
+
+            is_duplicate = context.get("is_duplicate_intent", False)
+            missing_info = context.get("missing_info")
+            txs = context.get("transactions_found", [])
+            has_duplicate_match = context.get("has_duplicate_match", False)
+
+            # 1. CASO COBRO DUPLICADO
+            if is_duplicate:
+                if missing_info == "amount_and_currency" or not claimed_amount:
+                    return (
+                        f"{greeting}. Para verificar si existe un "
+                        f"cobro duplicado en tu cuenta, "
+                        "por favor indícame el **monto** y la **moneda** "
+                        f"de la transacción."
+                    )
+
+                if has_duplicate_match:
+                    tx_details = "\n".join(
+                        f"• **{tx['merchant']}**: {tx['amount']} "
+                        f"{tx['currency']} — Fecha/Hora: `{tx['timestamp']}`"
+                        for tx in txs
+                    )
+                    return (
+                        f"{greeting}. Hemos detectado los siguientes cargos "
+                        f"duplicados en tu historial:\n\n{tx_details}\n\n"
+                        f"Debido a la coincidencia exacta en montos y fechas, "
+                        f"he transferido tu caso a un **agente humano** "
+                        f"para procesar el reembolso inmediato."
+                    )
+
+                return (
+                    f"{greeting}. Analizamos las transacciones por "
+                    f"**{claimed_amount} {currency}** en la última semana "
+                    f"y no encontramos cargos duplicados en fechas/horas contiguas. "
+                    f"¿Deseas iniciar una disputa individual "
+                    f"sobre alguna de tus compras?"
+                )
+
+            # 2. CASO DISPUTA ESTÁNDAR (MONTO NO RECONOCIDO)
+            if claimed_amount:
+                if txs:
+                    return (
+                        f"{greeting}. Registramos tu solicitud por "
+                        f"**{claimed_amount} {currency}**. "
+                        f"Encontramos las siguientes transacciones recientes "
+                        f"en la última semana con montos similares:\n\n"
+                        # f"{tx_list}\n\n"
+                        f"Por favor, **selecciona** de la transacción sobre "
+                        f"la cual deseas iniciar el reclamo."
+                    )
+
+                return (
+                    f"{greeting}. Registramos tu solicitud de disputa por"
+                    f" **{claimed_amount} {currency}**. "
+                    f"No encontramos transacciones en la última semana por ese "
+                    f"valor exacto, pero tu caso ha quedado registrado bajo revisión."
+                )
+
         elif intent == IntentEnum.HUMAN_HANDOFF:
             return (
                 f"{greeting}. Entiendo tu requerimiento. Estoy transfiriendo tu caso "

@@ -212,6 +212,23 @@ class MockDatabase(BaseDatabase):
                 is_fraud=False,
                 fraud_score=Decimal("0.5"),
             ),
+            # Transacción duplicada para pruebas
+            TransactionSchema(
+                transaction_id="TX_1004",
+                transaction_date=datetime(2026, 9, 28, 10, 5),
+                product_id=prod_id,
+                customer_id=cust_id,
+                transaction_type="Purchase",
+                amount=Decimal("150.00"),
+                currency="USD",
+                amount_usd=Decimal("150.00"),
+                merchant_name="known Electronics Store",
+                merchant_category="Digital Goods",
+                transaction_country="Mexico",
+                transaction_status="Approved",
+                is_fraud=False,
+                fraud_score=Decimal("12.5"),
+            ),
         ]
 
         for tx in mock_txs:

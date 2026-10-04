@@ -2,6 +2,9 @@ import time
 from typing import Any, Dict, Optional
 
 from app.backend.services.llm_service import llm_service
+from app.backend.utils.entity_extractor import (
+    extract_entities_regex,
+)  # Ajusta la ruta según tu estructura
 from app.ml.router import route_intent_event
 
 
@@ -22,12 +25,15 @@ async def process_interaction_event(
     # Fast-Path Success
     if router_result.get("routing_action") == "EXECUTE_ACTION":
         total_latency = round((time.perf_counter() - total_start) * 1000, 2)
+        user_text = event_payload.get("full_text", "")
+        entities = extract_entities_regex(user_text)
         return {
             "source": "DETERMINISTIC_FAST_PATH",
             "action": router_result["action"],
             "confidence": router_result["confidence"],
             "class_probabilities": router_result["class_probabilities"],
             "latency_ms": total_latency,
+            "extracted_entities": entities,
             "response_message": None,
         }
 

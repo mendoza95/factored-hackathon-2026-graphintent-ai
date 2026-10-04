@@ -29,7 +29,7 @@ async def test_chat_high_confidence_dispute_flow(client: AsyncClient):
     assert response.status_code == 200
 
     data = response.json()
-    # assert data["intent_detected"] == IntentEnum.DISPUTE_INITIATE
+    assert data["intent_detected"] == IntentEnum.DISPUTE_INITIATE
     assert "response_message" in data
     assert data["optimization_metrics"]["graph_nodes_count"] > 0
 
@@ -52,4 +52,4 @@ async def test_chat_low_confidence_fallback_flow(client: AsyncClient):
 
     data = response.json()
     assert "response_message" in data
-    assert data["intent_detected"] != IntentEnum.DISPUTE_INITIATE.value
+    assert data["intent_detected"] != IntentEnum.DISPUTE_INITIATE
