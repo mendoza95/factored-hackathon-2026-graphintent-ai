@@ -63,7 +63,7 @@ async def handle_verify_customer(
 async def handle_fetch_transactions(
     context: Dict[str, Any], request: ChatRequest, entities: Dict[str, Any]
 ) -> Dict[str, Any]:
-    # await asyncio.sleep(0.05)
+    await asyncio.sleep(0.05)
     db = get_db()
     customer_id = (
         context.get("customer_id")
@@ -175,7 +175,7 @@ async def handle_evaluate_fraud_score(
 async def handle_create_complaint_record(
     context: Dict[str, Any], request: ChatRequest, entities: Dict[str, Any]
 ) -> Dict[str, Any]:
-    # await asyncio.sleep(0.05)
+    await asyncio.sleep(0.05)
     db = get_db()
     customer_id = (
         context.get("customer_id")
@@ -203,7 +203,7 @@ async def handle_create_complaint_record(
 async def handle_fetch_customer_info(
     context: Dict[str, Any], request: ChatRequest, entities: Dict[str, Any]
 ) -> Dict[str, Any]:
-    # await asyncio.sleep(0.05)
+    await asyncio.sleep(0.05)
     db = get_db()
     customer_id = (
         context.get("customer_id")
@@ -219,7 +219,7 @@ async def handle_fetch_customer_info(
 async def handle_fetch_customer_products(
     context: Dict[str, Any], request: ChatRequest, entities: Dict[str, Any]
 ) -> Dict[str, Any]:
-    # await asyncio.sleep(0.05)
+    await asyncio.sleep(0.05)
     db = get_db()
     customer_id = (
         context.get("customer_id")
@@ -235,7 +235,7 @@ async def handle_fetch_customer_products(
 async def handle_fetch_recent_transactions_inquiry(
     context: Dict[str, Any], request: ChatRequest, entities: Dict[str, Any]
 ) -> Dict[str, Any]:
-    # await asyncio.sleep(0.05)
+    await asyncio.sleep(0.05)
     db = get_db()
     customer_id = (
         context.get("customer_id")
@@ -254,7 +254,7 @@ async def handle_fetch_recent_transactions_inquiry(
 async def handle_fetch_active_complaints(
     context: Dict[str, Any], request: ChatRequest, entities: Dict[str, Any]
 ) -> Dict[str, Any]:
-    # await asyncio.sleep(0.05)
+    await asyncio.sleep(0.05)
     db = get_db()
     customer_id = (
         context.get("customer_id")
@@ -273,7 +273,7 @@ async def handle_fetch_active_complaints(
 async def handle_fetch_exchange_rates(
     context: Dict[str, Any], request: ChatRequest, entities: Dict[str, Any]
 ) -> Dict[str, Any]:
-    # await asyncio.sleep(0.05)
+    await asyncio.sleep(0.05)
     db = get_db()
     rate = await asyncio.to_thread(db.get_exchange_rate, "MXN", "USD")
     context["exchange_rate_usd"] = rate
