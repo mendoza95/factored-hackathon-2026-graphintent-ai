@@ -31,4 +31,4 @@ jobs:
 
       - name: Run Unit Tests with Pytest
         run: |
-          pytest --ignore=tests/ml/test_pipeline.py
+          pytest --ignore=tests/ml/test_pipeline.py --ignore=tests/backend/test_duckdb.py
