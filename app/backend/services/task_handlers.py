@@ -9,6 +9,9 @@ from app.backend.db.deps import get_db
 from app.backend.schemas.chat import ChatRequest
 from app.backend.schemas.dispute import ComplaintSchema
 
+# Variable global para definir la ventana de búsqueda en días
+DEFAULT_DAYS_BACK = 30
+
 # Contract para los handlers
 TaskHandler = Callable[
     [Dict[str, Any], ChatRequest, Dict[str, Any]], Awaitable[Dict[str, Any]]
@@ -39,7 +42,7 @@ async def handle_extract_entities(
 async def handle_verify_customer(
     context: Dict[str, Any], request: ChatRequest, entities: Dict[str, Any]
 ) -> Dict[str, Any]:
-    await asyncio.sleep(0.05)  # Simula latencia de consulta local
+    await asyncio.sleep(0.05)
     db = get_db()
     customer_id = (
         context.get("customer_id")
@@ -60,7 +63,7 @@ async def handle_verify_customer(
 async def handle_fetch_transactions(
     context: Dict[str, Any], request: ChatRequest, entities: Dict[str, Any]
 ) -> Dict[str, Any]:
-    await asyncio.sleep(0.05)  # Simula latencia de consulta local
+    # await asyncio.sleep(0.05)
     db = get_db()
     customer_id = (
         context.get("customer_id")
@@ -68,7 +71,13 @@ async def handle_fetch_transactions(
         or "CUST_12345"
     )
 
-    tx_list = await asyncio.to_thread(db.get_customer_transactions, customer_id) or []
+    # Búsqueda utilizando la variable global DEFAULT_DAYS_BACK
+    tx_list = (
+        await asyncio.to_thread(
+            db.get_customer_transactions, customer_id, days_back=DEFAULT_DAYS_BACK
+        )
+        or []
+    )
     context["recent_transactions"] = tx_list
 
     claimed_amount = entities.get("claimed_amount")
@@ -166,7 +175,7 @@ async def handle_evaluate_fraud_score(
 async def handle_create_complaint_record(
     context: Dict[str, Any], request: ChatRequest, entities: Dict[str, Any]
 ) -> Dict[str, Any]:
-    await asyncio.sleep(0.05)  # Simula escritura en BD local
+    # await asyncio.sleep(0.05)
     db = get_db()
     customer_id = (
         context.get("customer_id")
@@ -194,7 +203,7 @@ async def handle_create_complaint_record(
 async def handle_fetch_customer_info(
     context: Dict[str, Any], request: ChatRequest, entities: Dict[str, Any]
 ) -> Dict[str, Any]:
-    await asyncio.sleep(0.05)  # Simula latencia de lectura local (50ms)
+    # await asyncio.sleep(0.05)
     db = get_db()
     customer_id = (
         context.get("customer_id")
@@ -210,7 +219,7 @@ async def handle_fetch_customer_info(
 async def handle_fetch_customer_products(
     context: Dict[str, Any], request: ChatRequest, entities: Dict[str, Any]
 ) -> Dict[str, Any]:
-    await asyncio.sleep(0.05)  # Simula latencia de lectura local (50ms)
+    # await asyncio.sleep(0.05)
     db = get_db()
     customer_id = (
         context.get("customer_id")
@@ -218,7 +227,7 @@ async def handle_fetch_customer_products(
         or "CUST_12345"
     )
     products = await asyncio.to_thread(db.get_customer_products, customer_id)
-    context["products"] = products
+    context["products"] = products or []
     return context
 
 
@@ -226,15 +235,18 @@ async def handle_fetch_customer_products(
 async def handle_fetch_recent_transactions_inquiry(
     context: Dict[str, Any], request: ChatRequest, entities: Dict[str, Any]
 ) -> Dict[str, Any]:
-    await asyncio.sleep(0.05)  # Simula latencia de lectura local (50ms)
+    # await asyncio.sleep(0.05)
     db = get_db()
     customer_id = (
         context.get("customer_id")
         or getattr(request, "customer_id", None)
         or "CUST_12345"
     )
-    tx_list = await asyncio.to_thread(db.get_customer_transactions, customer_id)
-    context["recent_transactions"] = tx_list or []
+    # Búsqueda utilizando la variable global DEFAULT_DAYS_BACK
+    tx_list = await asyncio.to_thread(
+        db.get_customer_transactions, customer_id, days_back=DEFAULT_DAYS_BACK
+    )
+    context["recent_transactions"] = tx_list if tx_list is not None else []
     return context
 
 
@@ -242,14 +254,17 @@ async def handle_fetch_recent_transactions_inquiry(
 async def handle_fetch_active_complaints(
     context: Dict[str, Any], request: ChatRequest, entities: Dict[str, Any]
 ) -> Dict[str, Any]:
-    await asyncio.sleep(0.05)  # Simula latencia de lectura local (50ms)
+    # await asyncio.sleep(0.05)
     db = get_db()
     customer_id = (
         context.get("customer_id")
         or getattr(request, "customer_id", None)
         or "CUST_12345"
     )
-    complaints = await asyncio.to_thread(db.get_active_complaints, customer_id)
+    # Búsqueda utilizando la variable global DEFAULT_DAYS_BACK
+    complaints = await asyncio.to_thread(
+        db.get_active_complaints, customer_id, days_back=DEFAULT_DAYS_BACK
+    )
     context["active_complaints"] = complaints or []
     return context
 
@@ -258,7 +273,7 @@ async def handle_fetch_active_complaints(
 async def handle_fetch_exchange_rates(
     context: Dict[str, Any], request: ChatRequest, entities: Dict[str, Any]
 ) -> Dict[str, Any]:
-    await asyncio.sleep(0.05)  # Simula latencia de lectura local (50ms)
+    # await asyncio.sleep(0.05)
     db = get_db()
     rate = await asyncio.to_thread(db.get_exchange_rate, "MXN", "USD")
     context["exchange_rate_usd"] = rate
@@ -272,8 +287,16 @@ async def handle_consolidate_financial_summary(
     products = context.get("products", [])
     rate_usd = context.get("exchange_rate_usd", 1.0)
 
-    total_balance_local = sum(float(p.get("current_balance", 0.0)) for p in products)
-    total_balance_usd = total_balance_local * rate_usd
+    # Usa 'current_balance' con guion bajo correspondiente al esquema
+    total_balance_local = 0.0
+    for p in products:
+        if isinstance(p, dict):
+            val = p.get("current_balance") or p.get("balance") or 0.0
+        else:
+            val = getattr(p, "current_balance", 0.0)
+        total_balance_local += float(val)
+
+    total_balance_usd = total_balance_local * float(rate_usd)
 
     context["account_summary"] = {
         "customer": context.get("customer_info"),

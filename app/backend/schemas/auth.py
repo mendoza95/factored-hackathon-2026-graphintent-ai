@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 class DocumentTypeEnum(str, Enum):
     CC = "CC"  # Cédula de Ciudadanía
     CE = "CE"  # Cédula de Extranjería
-    PASSPORT = "PASSPORT"
+    PASSPORT = "PASAPORTE"
     NIT = "NIT"
 
 

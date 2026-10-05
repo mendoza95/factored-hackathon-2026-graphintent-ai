@@ -4,7 +4,7 @@ import os
 import pytest
 from dotenv import load_dotenv
 
-from app.backend.db.duckdb import BASE_DIR, DuckDBDatabase
+from app.backend.db.duckdb_client import BASE_DIR, DuckDBDatabase
 
 env_path = BASE_DIR / ".env"
 load_dotenv(dotenv_path=env_path)

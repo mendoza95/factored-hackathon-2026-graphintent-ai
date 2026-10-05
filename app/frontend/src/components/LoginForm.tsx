@@ -62,7 +62,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onSuccess }) => {
           >
             <option value="CC">Cédula de Ciudadanía (CC)</option>
             <option value="CE">Cédula de Extranjería (CE)</option>
-            <option value="PASSPORT">Pasaporte</option>
+            <option value="PASAPORTE">Pasaporte</option>
             <option value="NIT">NIT</option>
           </select>
         </div>

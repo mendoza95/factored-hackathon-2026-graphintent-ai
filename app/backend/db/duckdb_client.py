@@ -1,4 +1,3 @@
-# app/backend/db/duckdb_db.py
 import os
 from datetime import datetime, timedelta
 from decimal import Decimal
@@ -20,6 +19,9 @@ BASE_DIR = Path(__file__).parent.parent.parent.parent.resolve()
 env_path = BASE_DIR / ".env"
 
 load_dotenv(dotenv_path=env_path)
+
+# Fecha de referencia por defecto para todas las consultas (30 de Junio de 2026)
+REFERENCE_DATE = datetime(2026, 6, 30, 23, 59, 59)
 
 
 class DuckDBDatabase(BaseDatabase):
@@ -47,8 +49,7 @@ class DuckDBDatabase(BaseDatabase):
         print(f"--> DuckDB iniciado apuntando a: {self.data_path}")
 
     def _init_s3_credentials(self):
-        """Configure AWS S3 credentials and thread/read performance
-        optimizations in DuckDB."""
+        """Configure AWS S3 credentials and performance optimizations."""
         aws_key = os.getenv("AWS_ACCESS_KEY_ID", "")
         aws_secret = os.getenv("AWS_SECRET_ACCESS_KEY", "")
         aws_region = os.getenv("AWS_REGION", "us-east-1")
@@ -65,15 +66,13 @@ class DuckDBDatabase(BaseDatabase):
     def _get_partitioned_path(
         self,
         folder_name: str,
-        year: Optional[str] = "2026",
+        year: Optional[str] = None,
         month: Optional[str] = None,
         day: Optional[str] = None,
         extension: str = "csv",
     ) -> str:
-        """
-        Genera la ruta para estructuras particionadas.
-        Por defecto filtra por el año actual ('2026').
-        Se pueden pasar month y day opcionales.
+        """Genera la ruta para estructuras particionadas.
+        Si no se pasan parametros de fecha, se usará el wildcard restringido.
         """
         y_str = f"year={year}" if year else "year=*"
         m_str = f"month={str(month).zfill(2)}" if month else "month=*"
@@ -93,28 +92,41 @@ class DuckDBDatabase(BaseDatabase):
         self, path: str, start_date: Optional[datetime] = None
     ) -> pd.DataFrame:
         """Lee la tabla aplicando filtro de fecha cuando se proporcione."""
-        reader_fn = "read_parquet" if path.endswith(".parquet") else "read_csv_auto"
+        try:
+            reader_fn = "read_parquet" if path.endswith(".parquet") else "read_csv_auto"
 
-        if start_date:
-            date_str = start_date.strftime("%Y-%m-%d %H:%M:%S")
-            query = (
-                f"SELECT * FROM {reader_fn}('{path}', hive_partitioning=1)"
-                f" WHERE transaction_date >= TIMESTAMP '{date_str}'"
-            )
-        else:
-            query = f"SELECT * FROM {reader_fn}('{path}', hive_partitioning=1)"
+            if start_date:
+                date_str = start_date.strftime("%Y-%m-%d %H:%M:%S")
+                query = (
+                    f"SELECT * FROM {reader_fn}('{path}', hive_partitioning=1)"
+                    f" WHERE transaction_date >= '{date_str}'::TIMESTAMP"
+                )
+            else:
+                query = f"SELECT * FROM {reader_fn}('{path}', hive_partitioning=1)"
 
-        return self.con.execute(query).df()
+            res = self.con.execute(query).df()
+            if res is not None and not res.empty:
+                res.columns = [str(c).lower() for c in res.columns]
+                return res
+            return pd.DataFrame()
+        except Exception:
+            return pd.DataFrame()
 
     def _query_table(self, path: str, condition_sql: str, params: list) -> pd.DataFrame:
-        """Ejecuta una consulta filtrada sobre un archivo
-        o estructura particionada."""
-        reader_fn = "read_parquet" if path.endswith(".parquet") else "read_csv_auto"
-        query = (
-            f"SELECT * FROM {reader_fn}('{path}', hive_partitioning=1) "
-            f"WHERE {condition_sql}"
-        )
-        return self.con.execute(query, params).df()
+        """Ejecuta una consulta filtrada retornando un DataFrame en minúsculas."""
+        try:
+            reader_fn = "read_parquet" if path.endswith(".parquet") else "read_csv_auto"
+            query = (
+                f"SELECT * FROM {reader_fn}('{path}', hive_partitioning=1) "
+                f"WHERE {condition_sql}"
+            )
+            res = self.con.execute(query, params).df()
+            if res is not None and not res.empty:
+                res.columns = [str(c).lower() for c in res.columns]
+                return res
+            return pd.DataFrame()
+        except Exception:
+            return pd.DataFrame()
 
     def _get_file_path(self, filename: str) -> str:
         return f"{self.data_path}/{filename}"
@@ -124,89 +136,99 @@ class DuckDBDatabase(BaseDatabase):
     def get_call_center_interactions(
         self,
         customer_id: Optional[str] = None,
-        year: Optional[str] = "2026",
+        days_back: Optional[int] = 7,
+        year: Optional[str] = None,
         month: Optional[str] = None,
         day: Optional[str] = None,
     ) -> list[dict]:
         path = self._get_partitioned_path(
             "call_center_interactions", year=year, month=month, day=day
         )
-        if customer_id:
-            res = self._query_table(path, "customer_id = ?", [customer_id])
-        else:
-            res = self._read_table(path)
-        return res.to_dict(orient="records") if not res.empty else []
+        cond = "customer_id = ?" if customer_id else "1=1"
+        params = [customer_id] if customer_id else []
+        res = self._query_table(path, cond, params)
+        return (
+            res.to_dict(orient="records") if (res is not None and not res.empty) else []
+        )
 
     def get_call_transcripts(
         self,
         customer_id: Optional[str] = None,
-        year: Optional[str] = "2026",
+        days_back: Optional[int] = 7,
+        year: Optional[str] = None,
         month: Optional[str] = None,
         day: Optional[str] = None,
     ) -> list[dict]:
         path = self._get_partitioned_path(
             "call_transcripts", year=year, month=month, day=day
         )
-        if customer_id:
-            res = self._query_table(path, "customer_id = ?", [customer_id])
-        else:
-            res = self._read_table(path)
-        return res.to_dict(orient="records") if not res.empty else []
+        cond = "customer_id = ?" if customer_id else "1=1"
+        params = [customer_id] if customer_id else []
+        res = self._query_table(path, cond, params)
+        return (
+            res.to_dict(orient="records") if (res is not None and not res.empty) else []
+        )
 
     def get_campaign_sends(
         self,
         customer_id: Optional[str] = None,
-        year: Optional[str] = "2026",
+        days_back: Optional[int] = 7,
+        year: Optional[str] = None,
         month: Optional[str] = None,
         day: Optional[str] = None,
     ) -> list[dict]:
         path = self._get_partitioned_path(
             "campaign_sends", year=year, month=month, day=day
         )
-        if customer_id:
-            res = self._query_table(path, "customer_id = ?", [customer_id])
-        else:
-            res = self._read_table(path)
-        return res.to_dict(orient="records") if not res.empty else []
+        cond = "customer_id = ?" if customer_id else "1=1"
+        params = [customer_id] if customer_id else []
+        res = self._query_table(path, cond, params)
+        return (
+            res.to_dict(orient="records") if (res is not None and not res.empty) else []
+        )
 
     def get_digital_events(
         self,
         customer_id: Optional[str] = None,
-        year: Optional[str] = "2026",
+        days_back: Optional[int] = 7,
+        year: Optional[str] = None,
         month: Optional[str] = None,
         day: Optional[str] = None,
     ) -> list[dict]:
         path = self._get_partitioned_path(
             "digital_events", year=year, month=month, day=day
         )
-        if customer_id:
-            res = self._query_table(path, "customer_id = ?", [customer_id])
-        else:
-            res = self._read_table(path)
-        return res.to_dict(orient="records") if not res.empty else []
+        cond = "customer_id = ?" if customer_id else "1=1"
+        params = [customer_id] if customer_id else []
+        res = self._query_table(path, cond, params)
+        return (
+            res.to_dict(orient="records") if (res is not None and not res.empty) else []
+        )
 
     def get_satisfaction_surveys(
         self,
         customer_id: Optional[str] = None,
-        year: Optional[str] = "2026",
+        days_back: Optional[int] = 7,
+        year: Optional[str] = None,
         month: Optional[str] = None,
         day: Optional[str] = None,
     ) -> list[dict]:
         path = self._get_partitioned_path(
             "satisfaction_surveys", year=year, month=month, day=day
         )
-        if customer_id:
-            res = self._query_table(path, "customer_id = ?", [customer_id])
-        else:
-            res = self._read_table(path)
-        return res.to_dict(orient="records") if not res.empty else []
+        cond = "customer_id = ?" if customer_id else "1=1"
+        params = [customer_id] if customer_id else []
+        res = self._query_table(path, cond, params)
+        return (
+            res.to_dict(orient="records") if (res is not None and not res.empty) else []
+        )
 
     # --- IMPLEMENTACIÓN BASE DATABASE ---
 
     def get_customer(self, customer_id: str) -> Optional[dict]:
         path = self._get_file_path("customers.csv")
         res = self._query_table(path, "customer_id = ?", [customer_id])
-        return res.iloc[0].to_dict() if not res.empty else None
+        return res.iloc[0].to_dict() if (res is not None and not res.empty) else None
 
     def get_customer_by_document(
         self, document_type: str, document_number: str
@@ -217,17 +239,17 @@ class DuckDBDatabase(BaseDatabase):
             "AND CAST(document_number AS VARCHAR) = CAST(? AS VARCHAR)"
         )
         res = self._query_table(path, cond, [document_type, str(document_number)])
-        return res.iloc[0].to_dict() if not res.empty else None
+        return res.iloc[0].to_dict() if (res is not None and not res.empty) else None
 
     def get_product(self, product_id: str) -> Optional[dict]:
         path = self._get_file_path("products.csv")
         res = self._query_table(path, "product_id = ?", [product_id])
-        return res.iloc[0].to_dict() if not res.empty else None
+        return res.iloc[0].to_dict() if (res is not None and not res.empty) else None
 
     def get_transaction(
         self,
         transaction_id: str,
-        year: Optional[str] = "2026",
+        year: Optional[str] = None,
         month: Optional[str] = None,
         day: Optional[str] = None,
     ) -> Optional[TransactionSchema]:
@@ -235,17 +257,19 @@ class DuckDBDatabase(BaseDatabase):
             "transactions", year=year, month=month, day=day
         )
         res = self._query_table(path, "transaction_id = ?", [transaction_id])
-        if res.empty:
+        if res is None or res.empty or "transaction_id" not in res.columns:
             return None
         row = res.iloc[0]
         return TransactionSchema(
-            transaction_id=str(row["transaction_id"]),
-            transaction_date=pd.to_datetime(row["transaction_date"]).to_pydatetime(),
-            product_id=str(row["product_id"]),
-            customer_id=str(row["customer_id"]),
-            transaction_type=str(row["transaction_type"]),
-            amount=Decimal(str(row["amount"])),
-            currency=str(row["currency"]),
+            transaction_id=str(row.get("transaction_id", "")),
+            transaction_date=pd.to_datetime(
+                row.get("transaction_date", REFERENCE_DATE)
+            ).to_pydatetime(),
+            product_id=str(row.get("product_id", "")),
+            customer_id=str(row.get("customer_id", "")),
+            transaction_type=str(row.get("transaction_type", "Debit")),
+            amount=Decimal(str(row.get("amount", "0"))),
+            currency=str(row.get("currency", "USD")),
             merchant_name=str(row.get("merchant_name", "")),
             transaction_country=str(row.get("transaction_country", "")),
             transaction_status=str(row.get("transaction_status", "Approved")),
@@ -254,39 +278,50 @@ class DuckDBDatabase(BaseDatabase):
     def get_customer_transactions(
         self,
         customer_id: str,
-        days_back: int = 7,
-        year: Optional[str] = "2026",
+        days_back: Optional[int] = 7,
+        year: Optional[str] = None,
         month: Optional[str] = None,
         day: Optional[str] = None,
     ) -> list[TransactionSchema]:
+        ref_date = REFERENCE_DATE
+        if not year and days_back:
+            year = str(ref_date.year)
+
         path = self._get_partitioned_path(
             "transactions", year=year, month=month, day=day
         )
 
-        # Filtro de ventana de tiempo (por defecto 7 días atrás)
         if days_back:
-            start_date = datetime.now() - timedelta(days=days_back)
+            start_date = ref_date - timedelta(days=days_back)
             date_str = start_date.strftime("%Y-%m-%d %H:%M:%S")
-            cond = "customer_id = ? AND transaction_date >= TIMESTAMP ?"
-            params = [customer_id, date_str]
+            end_date_str = ref_date.strftime("%Y-%m-%d %H:%M:%S")
+            cond = (
+                "customer_id = ? AND transaction_date "
+                "BETWEEN ?::TIMESTAMP AND ?::TIMESTAMP"
+            )
+            params = [customer_id, date_str, end_date_str]
         else:
             cond = "customer_id = ?"
             params = [customer_id]
 
         res = self._query_table(path, cond, params)
+
+        if res is None or res.empty or "transaction_id" not in res.columns:
+            return []
+
         txs = []
         for _, row in res.iterrows():
             txs.append(
                 TransactionSchema(
-                    transaction_id=str(row["transaction_id"]),
+                    transaction_id=str(row.get("transaction_id", "")),
                     transaction_date=pd.to_datetime(
-                        row["transaction_date"]
+                        row.get("transaction_date", ref_date)
                     ).to_pydatetime(),
-                    product_id=str(row["product_id"]),
-                    customer_id=str(row["customer_id"]),
-                    transaction_type=str(row["transaction_type"]),
-                    amount=Decimal(str(row["amount"])),
-                    currency=str(row["currency"]),
+                    product_id=str(row.get("product_id", "")),
+                    customer_id=str(row.get("customer_id", customer_id)),
+                    transaction_type=str(row.get("transaction_type", "Debit")),
+                    amount=Decimal(str(row.get("amount", "0"))),
+                    currency=str(row.get("currency", "USD")),
                     merchant_name=str(row.get("merchant_name", "")),
                     transaction_country=str(row.get("transaction_country", "")),
                     transaction_status=str(row.get("transaction_status", "Approved")),
@@ -300,19 +335,21 @@ class DuckDBDatabase(BaseDatabase):
     def get_complaint(
         self,
         complaint_id: str,
-        year: Optional[str] = "2026",
+        year: Optional[str] = None,
         month: Optional[str] = None,
         day: Optional[str] = None,
     ) -> Optional[ComplaintSchema]:
         path = self._get_partitioned_path("complaints", year=year, month=month, day=day)
         res = self._query_table(path, "complaint_id = ?", [complaint_id])
-        if res.empty:
+        if res is None or res.empty or "complaint_id" not in res.columns:
             return None
         row = res.iloc[0]
         return ComplaintSchema(
-            complaint_id=str(row["complaint_id"]),
-            creation_date=pd.to_datetime(row["creation_date"]).to_pydatetime(),
-            customer_id=str(row["customer_id"]),
+            complaint_id=str(row.get("complaint_id", "")),
+            creation_date=pd.to_datetime(
+                row.get("creation_date", REFERENCE_DATE)
+            ).to_pydatetime(),
+            customer_id=str(row.get("customer_id", "")),
             claimed_amount=Decimal(str(row.get("claimed_amount", 0))),
             currency=str(row.get("currency", "USD")),
             status=str(row.get("status", "Open")),
@@ -320,31 +357,35 @@ class DuckDBDatabase(BaseDatabase):
 
     def get_frontend_transactions(
         self,
-        days_back: int = 7,
-        year: Optional[str] = "2026",
+        days_back: Optional[int] = 7,
+        year: Optional[str] = None,
         month: Optional[str] = None,
         day: Optional[str] = None,
     ) -> list[Transaction]:
+        ref_date = REFERENCE_DATE
         path = self._get_partitioned_path(
             "transactions", year=year, month=month, day=day
         )
-        start_date = datetime.now() - timedelta(days=days_back) if days_back else None
+        start_date = ref_date - timedelta(days=days_back) if days_back else None
 
         res = self._read_table(path, start_date=start_date)
+        if res is None or res.empty or "transaction_id" not in res.columns:
+            return []
+
         frontend_list = []
         for _, row in res.iterrows():
             status = (
                 "disputed"
-                if str(row.get("transaction_status")) == "Reversed"
+                if str(row.get("transaction_status", "")) == "Reversed"
                 else "posted"
             )
             frontend_list.append(
                 Transaction(
-                    id=str(row["transaction_id"]),
+                    id=str(row.get("transaction_id", "")),
                     merchant=str(row.get("merchant_name", "Comercio")),
-                    amount=float(row["amount"]),
-                    currency=str(row["currency"]),
-                    date=str(row["transaction_date"]),
+                    amount=float(row.get("amount", 0.0)),
+                    currency=str(row.get("currency", "USD")),
+                    date=str(row.get("transaction_date", "")),
                     status=status,
                 )
             )
@@ -356,26 +397,52 @@ class DuckDBDatabase(BaseDatabase):
     def get_customer_products(self, customer_id: str) -> list[dict]:
         path = self._get_file_path("products.csv")
         res = self._query_table(path, "customer_id = ?", [customer_id])
-        return res.to_dict(orient="records") if not res.empty else []
+        return (
+            res.to_dict(orient="records") if (res is not None and not res.empty) else []
+        )
 
     def get_active_complaints(
         self,
         customer_id: str,
-        year: Optional[str] = "2026",
+        days_back: Optional[int] = 7,
+        year: Optional[str] = None,
         month: Optional[str] = None,
         day: Optional[str] = None,
     ) -> list[ComplaintSchema]:
+        ref_date = REFERENCE_DATE
+        if not year and days_back:
+            year = str(ref_date.year)
+
         path = self._get_partitioned_path("complaints", year=year, month=month, day=day)
-        res = self._query_table(
-            path, "customer_id = ? AND status IN ('Open', 'In Process')", [customer_id]
-        )
+
+        if days_back:
+            start_date = ref_date - timedelta(days=days_back)
+            cond = (
+                "customer_id = ? AND status IN ('Open', 'In Process') AND "
+                "creation_date BETWEEN ?::TIMESTAMP AND ?::TIMESTAMP"
+            )
+            params = [
+                customer_id,
+                start_date.strftime("%Y-%m-%d %H:%M:%S"),
+                ref_date.strftime("%Y-%m-%d %H:%M:%S"),
+            ]
+        else:
+            cond = "customer_id = ? AND status IN ('Open', 'In Process')"
+            params = [customer_id]
+
+        res = self._query_table(path, cond, params)
+        if res is None or res.empty or "complaint_id" not in res.columns:
+            return []
+
         complaints = []
         for _, row in res.iterrows():
             complaints.append(
                 ComplaintSchema(
-                    complaint_id=str(row["complaint_id"]),
-                    creation_date=pd.to_datetime(row["creation_date"]).to_pydatetime(),
-                    customer_id=str(row["customer_id"]),
+                    complaint_id=str(row.get("complaint_id", "")),
+                    creation_date=pd.to_datetime(
+                        row.get("creation_date", ref_date)
+                    ).to_pydatetime(),
+                    customer_id=str(row.get("customer_id", customer_id)),
                     claimed_amount=Decimal(str(row.get("claimed_amount", 0))),
                     currency=str(row.get("currency", "USD")),
                     status=str(row.get("status", "Open")),
@@ -393,7 +460,3 @@ class DuckDBDatabase(BaseDatabase):
             ("USD", "USD"): 1.0,
         }
         return rates.get((source_currency, target_currency), 1.0)
-
-
-if __name__ == "__main__":
-    con = DuckDBDatabase()

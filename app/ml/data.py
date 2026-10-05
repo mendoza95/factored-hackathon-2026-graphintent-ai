@@ -4,7 +4,7 @@ from typing import Optional, Union
 
 import pandas as pd
 
-from app.backend.db.duckdb import DuckDBDatabase
+from app.backend.db.duckdb_client import DuckDBDatabase
 
 TEXT_COLS = [
     "full_text",
@@ -235,9 +235,9 @@ def get_or_create_dataset(
     Obtiene el dataset guardado en Parquet. Si no existe o se fuerza el rebuild,
     ejecuta la extracción DuckDB y lo guarda en disco.
     """
-    if processed_parquet_path.exists() and not force_rebuild:
+    if (data_dir / processed_parquet_path).exists() and not force_rebuild:
         print(f"Cargando dataset preprocesado desde: {processed_parquet_path}")
-        return pd.read_parquet(processed_parquet_path)
+        return pd.read_parquet(data_dir / processed_parquet_path)
 
     print("Generando nuevo dataset de entrenamiento con DuckDB...")
     df = load_and_prepare_data(

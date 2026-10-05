@@ -134,9 +134,10 @@ if __name__ == "__main__":
     else:
         start_date = datetime.now()
 
+    force_rebuild = False  # dejamos en false por defecto
     # Selección del origen de datos
     if use_s3:
-        s3_bucket = os.getenv("S3_BUCKET_NAME") or os.getenv("AWS_S3_BUCKET_NAME")
+        s3_bucket = os.getenv("S3_BUCKET_NAME")
         if not s3_bucket:
             print(
                 "Error: Se especificó --s3 pero "
@@ -144,9 +145,10 @@ if __name__ == "__main__":
             )
             sys.exit(1)
         data_dir = f"s3://{s3_bucket}"
+        force_rebuild = True
         print(f"--> [MODO S3] Leyendo desde: {data_dir}")
     else:
-        data_dir = BASE_DIR / "data" / "sample"
+        data_dir = BASE_DIR / "data" / "processed"
         print(f"--> [MODO LOCAL] Leyendo desde: {data_dir}")
 
     date_suffix = start_date.strftime("%Y_%m_%d")
@@ -162,6 +164,6 @@ if __name__ == "__main__":
         processed_dataset_path=processed_parquet,
         model_output_path=model_output,
         start_date=start_date,
-        days_back=30,
-        force_rebuild_data=True,
+        days_back=120,
+        force_rebuild_data=force_rebuild,
     )

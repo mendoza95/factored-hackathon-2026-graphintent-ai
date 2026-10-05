@@ -1,4 +1,3 @@
-# app/backend/services/dispute_service.py
 import asyncio
 import time
 from typing import Any, Optional, Tuple
@@ -93,6 +92,32 @@ class DisputeService:
             event_payload=payload,
             user_accent=request.user_accent,
         )
+
+        routing_action = orch_result.get("routing_action")
+
+        # Control de Fallback por baja confianza o saludo simple (e.g. "hola")
+        if routing_action == "LLM_FALLBACK":
+            response_text = llm_service.generate_response(
+                intent=IntentEnum.UNSUPPORTED,
+                user_accent=request.user_accent,
+                context={
+                    "message": request.message,
+                    "customer_id": effective_customer_id,
+                },
+            )
+            validated_response = guardrail_service.validate_output(response_text)
+            return ChatResponse(
+                response_message=validated_response,
+                intent_detected=IntentEnum.UNSUPPORTED,
+                requires_human_handoff=False,
+                optimization_metrics=OptimizationMetadata(
+                    graph_nodes_count=0,
+                    graph_edges_count=0,
+                    chromatic_number=0,
+                    execution_batches={},
+                    total_execution_time_ms=round(orch_result.get("latency_ms", 0), 2),
+                ),
+            )
 
         action, intent, entities = await self._extract_and_resolve_entities(
             request, session_id, session, orch_result
@@ -438,11 +463,17 @@ class DisputeService:
             scheduler.graph.add_node(node)
 
         # Capa 1: Consultas en paralelo tras verificar al cliente
+        scheduler.graph.add_edge(
+            "verify_customer", "fetch_customer_info"
+        )  # <-- AÑADIDO
         scheduler.graph.add_edge("verify_customer", "fetch_customer_products")
         scheduler.graph.add_edge("verify_customer", "fetch_recent_transactions")
         scheduler.graph.add_edge("verify_customer", "fetch_active_complaints")
+        scheduler.graph.add_edge(
+            "verify_customer", "fetch_exchange_rates"
+        )  # <-- AÑADIDO
 
-        # Capa 2: Consolidación (espera las consultas previas)
+        # Capa 2: Consolidación (espera que terminen todas las consultas previas)
         scheduler.graph.add_edge("fetch_customer_info", "consolidate_financial_summary")
         scheduler.graph.add_edge(
             "fetch_customer_products", "consolidate_financial_summary"

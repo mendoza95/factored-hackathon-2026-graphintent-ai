@@ -11,11 +11,13 @@ router = APIRouter(prefix="/auth", tags=["Auth"])
 @router.post("/login", response_model=TokenResponse)
 async def login(credentials: LoginRequest, db: BaseDatabase = Depends(get_db)):
 
+    print(credentials.document_type.value)
+    print(credentials.document_number)
     # Query DuckDB to retrieve customer_id matching document_type and document_number
     customer = db.get_customer_by_document(
         credentials.document_type.value, credentials.document_number
     )
-
+    print(customer)
     if not customer:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

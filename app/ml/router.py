@@ -10,7 +10,7 @@ MODEL_PATH = BASE_DIR / "ml" / "models" / "intent_classifier_2026_05_31.joblib"
 # Initialize predictor globally for fast cold-starts
 predictor = IntentPredictor(model_path=MODEL_PATH)
 
-CONFIDENCE_THRESHOLD = 0.7
+CONFIDENCE_THRESHOLD = 0.6
 
 LABEL_CONFIG = {
     "dispute_initiate": {"action": "INITIATE_DISPUTE_WORKFLOW"},

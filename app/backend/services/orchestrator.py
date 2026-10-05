@@ -27,6 +27,7 @@ async def process_interaction_event(
         total_latency = round((time.perf_counter() - total_start) * 1000, 2)
         user_text = event_payload.get("full_text", "")
         entities = extract_entities_regex(user_text)
+        print(f"Orchestrator: ACTION: {router_result['action']}")
         return {
             "source": "DETERMINISTIC_FAST_PATH",
             "action": router_result["action"],
@@ -44,6 +45,7 @@ async def process_interaction_event(
 
     total_latency = round((time.perf_counter() - total_start) * 1000, 2)
 
+    print(f"Orchestrator: ACTION: {fallback_result['action']}")
     return {
         "source": "LLM_FALLBACK",
         "action": fallback_result["action"],

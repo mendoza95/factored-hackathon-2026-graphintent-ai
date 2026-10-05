@@ -17,7 +17,7 @@ MODEL_NAME = "Qwen/Qwen2.5-72B-Instruct"
 
 
 class LLM_client:
-    def __init__(self, timeout_seconds: float = 3.5):
+    def __init__(self, timeout_seconds: float = 12.0):  # Aumentado de 5 a 12 segundos
         self.timeout_seconds = timeout_seconds
         self.client = (
             AsyncInferenceClient(model=MODEL_NAME, token=HF_TOKEN) if HF_TOKEN else None
