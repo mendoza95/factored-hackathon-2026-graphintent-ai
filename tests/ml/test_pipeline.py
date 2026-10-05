@@ -10,7 +10,7 @@ from app.ml.router import route_intent_event
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 DATA_DIR = BASE_DIR / "app" / "data" / "sample"
-MODEL_PATH = BASE_DIR / "app" / "ml" / "models" / "intent_classifier.joblib"
+MODEL_PATH = BASE_DIR / "app" / "ml" / "models" / "intent_classifier_2026_05_31.joblib"
 
 
 def test_data_loading_and_labeling():
@@ -18,7 +18,6 @@ def test_data_loading_and_labeling():
     df = load_and_prepare_data(DATA_DIR)
     assert not df.empty
     assert "rich_text" in df.columns
-    assert "has_past_complaint" in df.columns
     assert "label" in df.columns
     # Verifica que human_handoff ya no sea parte de las etiquetas
     assert set(df["label"].unique()).issubset({"account_inquiry", "dispute_initiate"})
@@ -37,7 +36,6 @@ def test_predict_inference():
         "duration_seconds": 180.0,
         "wait_time_seconds": 10.0,
         "sentiment_score": -0.7,
-        "has_past_complaint": True,
     }
     res = predictor.predict(sample_payload)
     assert res["predicted_label"] == "dispute_initiate"
@@ -63,7 +61,6 @@ def test_predict_account_inquiry():
         "duration_seconds": 60.0,
         "wait_time_seconds": 5.0,
         "sentiment_score": 0.1,
-        "has_past_complaint": False,
     }
     res = predictor.predict(sample_payload)
     assert res["predicted_label"] == "account_inquiry"
@@ -87,7 +84,6 @@ def test_router_account_inquiry_fast_path():
         "duration_seconds": 60.0,
         "wait_time_seconds": 5.0,
         "sentiment_score": 0.1,
-        "has_past_complaint": False,
     }
     route_res = route_intent_event(sample_inquiry)
 
@@ -116,7 +112,6 @@ def test_router_deterministic_fast_path():
         "duration_seconds": 240.0,
         "wait_time_seconds": 15.0,
         "sentiment_score": -0.8,
-        "has_past_complaint": True,
     }
     route_res = route_intent_event(sample_dispute)
     assert route_res["routing_action"] == "EXECUTE_ACTION"
@@ -162,7 +157,6 @@ async def test_orchestrator_fast_path_and_fallback():
         "channel": "chat",
         "duration_seconds": 200.0,
         "sentiment_score": -0.8,
-        "has_past_complaint": True,
     }
     res_fast = await process_interaction_event(dispute_payload)
     assert res_fast["source"] == "DETERMINISTIC_FAST_PATH"

@@ -16,7 +16,7 @@ from app.backend.services.orchestrator import process_interaction_event
 from app.backend.services.session_service import session_service
 from app.backend.services.task_handlers import TASK_HANDLERS
 from app.backend.utils.entity_extractor import extract_entities_regex
-from app.ml.data import COMPLAINT_PATTERNS, INQUIRY_PATTERNS
+from app.ml.data import COMPLAINT_KEYWORDS, INQUIRY_KEYWORDS
 
 # Action string to IntentEnum mapping for schema backwards-compatibility
 ACTION_TO_INTENT_MAP = {
@@ -68,8 +68,8 @@ class DisputeService:
         text_lower = message_text.lower()
 
         # Detección contextual dinámica
-        is_complaint = bool(COMPLAINT_PATTERNS.search(text_lower))
-        is_inquiry = bool(INQUIRY_PATTERNS.search(text_lower))
+        is_complaint = any(kw in text_lower for kw in COMPLAINT_KEYWORDS)
+        is_inquiry = any(kw in text_lower for kw in INQUIRY_KEYWORDS)
 
         # Valores dinámicos según el contenido real del mensaje
         sentiment = -0.5 if is_complaint else 0.0
@@ -86,7 +86,6 @@ class DisputeService:
             "duration_seconds": getattr(request, "duration_seconds", 30.0),
             "wait_time_seconds": getattr(request, "wait_time_seconds", 2.0),
             "sentiment_score": getattr(request, "sentiment_score", sentiment),
-            "has_past_complaint": getattr(request, "has_past_complaint", False),
             "customer_id": effective_customer_id,
         }
 

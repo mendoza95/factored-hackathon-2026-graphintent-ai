@@ -1,7 +1,8 @@
+# app/backend/db/base.py
 from abc import ABC, abstractmethod
 from typing import Optional
 
-from app.backend.schemas.dispute import ComplaintSchema, TransactionSchema
+from app.backend.schemas.dispute import ComplaintSchema, Transaction, TransactionSchema
 
 
 class BaseDatabase(ABC):
@@ -33,4 +34,26 @@ class BaseDatabase(ABC):
 
     @abstractmethod
     def get_complaint(self, complaint_id: str) -> Optional[ComplaintSchema]:
+        pass
+
+    @abstractmethod
+    def get_frontend_transactions(self) -> list[Transaction]:
+        pass
+
+    @abstractmethod
+    def update_transaction_status(self, transaction_id: str, new_status: str) -> bool:
+        pass
+
+    @abstractmethod
+    def get_customer_products(self, customer_id: str) -> list[dict]:
+        pass
+
+    @abstractmethod
+    def get_active_complaints(self, customer_id: str) -> list[ComplaintSchema]:
+        pass
+
+    @abstractmethod
+    def get_exchange_rate(
+        self, source_currency: str, target_currency: str = "USD"
+    ) -> float:
         pass

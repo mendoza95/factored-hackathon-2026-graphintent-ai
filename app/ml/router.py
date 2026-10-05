@@ -5,12 +5,12 @@ from typing import Any, Dict
 from app.ml.predict import IntentPredictor
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-MODEL_PATH = BASE_DIR / "ml" / "models" / "intent_classifier.joblib"
+MODEL_PATH = BASE_DIR / "ml" / "models" / "intent_classifier_2026_05_31.joblib"
 
 # Initialize predictor globally for fast cold-starts
 predictor = IntentPredictor(model_path=MODEL_PATH)
 
-CONFIDENCE_THRESHOLD = 0.6
+CONFIDENCE_THRESHOLD = 0.7
 
 LABEL_CONFIG = {
     "dispute_initiate": {"action": "INITIATE_DISPUTE_WORKFLOW"},
@@ -28,7 +28,7 @@ def route_intent_event(event_payload: Dict[str, Any]) -> Dict[str, Any]:
     prediction = predictor.predict(event_payload)
     predicted_label = prediction["predicted_label"]
     confidence = prediction["confidence"]
-    # print(f"Confidence: {confidence} - Predicted label: {predicted_label}")
+    print(f"Confidence: {confidence} - Predicted label: {predicted_label}")
     latency_ms = round((time.perf_counter() - start_time) * 1000, 2)
 
     default_action = {"action": "COLLECT_MORE_INFO"}
@@ -70,7 +70,6 @@ if __name__ == "__main__":
         "duration_seconds": 240.0,
         "wait_time_seconds": 15.0,
         "sentiment_score": -0.8,
-        "has_past_complaint": True,
     }
 
     # Test High-Confidence Account Inquiry Case
@@ -84,7 +83,6 @@ if __name__ == "__main__":
         "duration_seconds": 30.0,
         "wait_time_seconds": 2.0,
         "sentiment_score": 0.0,
-        "has_past_complaint": False,
     }
 
     # Test Low-Confidence Generic Case
