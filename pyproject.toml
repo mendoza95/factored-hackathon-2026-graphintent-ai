@@ -71,6 +71,15 @@ dev = [
 line-length = 88
 target-version = "py311"
 
+exclude = [
+    ".git",
+    ".venv",
+    "__pycache__",
+    "build",
+    "dist",
+    "*.ipynb",      # Ignora todos los notebooks del proyecto
+]
+
 [tool.ruff.lint]
 select = ["E", "F", "I"]
 
