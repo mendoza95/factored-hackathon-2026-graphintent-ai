@@ -17,14 +17,17 @@ class MockDatabase(BaseDatabase):
     """In-memory database loader that populates from local sample CSVs."""
 
     def __init__(self, data_dir: str = "data/sample"):
-        self.data_dir = Path(data_dir)
+        self.data_dir = Path(data_dir).parent.parent.resolve() / "app" / data_dir
+        # print(f"DATA_DIR:{self.data_dir}")
         self._customers: dict[str, dict] = {}
         self._products: dict[str, dict] = {}
         self._transactions: dict[str, TransactionSchema] = {}
         self._complaints: dict[str, ComplaintSchema] = {}
 
         # Load real local data or fallback to mock fixtures
-        self._load_sample_data()
+        # self._load_sample_data()
+        # If no CSVs were found, seed standard fallback mock data
+        self._seed_fallback_data()
 
     def _load_sample_data(self):
         """Read CSV files from data/sample if present, else seed mock defaults."""
@@ -32,7 +35,9 @@ class MockDatabase(BaseDatabase):
 
         # 1. Load Customers
         customers_file = self.data_dir / "customers.csv"
+        print(f"Customers file: {customers_file}")
         if customers_file.exists():
+            print("Reading customers")
             df_cust = pd.read_csv(customers_file)
             for _, row in df_cust.iterrows():
                 c_id = str(row["customer_id"])
@@ -131,16 +136,14 @@ class MockDatabase(BaseDatabase):
                     sla_breached=bool(row.get("sla_breached", False)),
                 )
             loaded_any = True
-
-        # If no CSVs were found, seed standard fallback mock data
-        if not loaded_any:
-            self._seed_fallback_data()
+        return loaded_any
 
     def _seed_fallback_data(self):
         """Seed default mock records if CSVs are missing."""
         cust_id = "CUST_12345"
         prod_id = "PROD_CARD_01"
 
+        # 1. Datos de cliente
         self._customers[cust_id] = {
             "customer_id": cust_id,
             "first_name": "Carlos",
@@ -153,16 +156,28 @@ class MockDatabase(BaseDatabase):
             "customer_status": "Active",
         }
 
+        # 2. Productos financieros del cliente
         self._products[prod_id] = {
             "product_id": prod_id,
             "customer_id": cust_id,
             "product_type": "Credit Card",
             "currency": "MXN",
             "current_balance": Decimal("45000.00"),
+            "credit_limit": Decimal("100000.00"),
             "product_status": "Active",
         }
 
-        # Seed mock transactions
+        prod_savings_id = "PROD_SAV_02"
+        self._products[prod_savings_id] = {
+            "product_id": prod_savings_id,
+            "customer_id": cust_id,
+            "product_type": "Savings Account",
+            "currency": "MXN",
+            "current_balance": Decimal("125000.50"),
+            "product_status": "Active",
+        }
+
+        # 3. Transacciones de prueba
         mock_txs = [
             TransactionSchema(
                 transaction_id="TX_1001",
@@ -212,7 +227,6 @@ class MockDatabase(BaseDatabase):
                 is_fraud=False,
                 fraud_score=Decimal("0.5"),
             ),
-            # Transacción duplicada para pruebas
             TransactionSchema(
                 transaction_id="TX_1004",
                 transaction_date=datetime(2026, 9, 28, 10, 5),
@@ -222,7 +236,7 @@ class MockDatabase(BaseDatabase):
                 amount=Decimal("150.00"),
                 currency="USD",
                 amount_usd=Decimal("150.00"),
-                merchant_name="known Electronics Store",
+                merchant_name="Unknown Electronics Store",
                 merchant_category="Digital Goods",
                 transaction_country="Mexico",
                 transaction_status="Approved",
@@ -233,6 +247,22 @@ class MockDatabase(BaseDatabase):
 
         for tx in mock_txs:
             self._transactions[tx.transaction_id] = tx
+
+        # 4. Reclamos activos
+        comp_id = "COMP_8812"
+        self._complaints[comp_id] = ComplaintSchema(
+            complaint_id=comp_id,
+            creation_date=datetime(2026, 9, 29, 14, 30),
+            customer_id=cust_id,
+            case_type="Claim",
+            category="Transaction Dispute",
+            affected_product_id=prod_id,
+            claimed_amount=Decimal("150.00"),
+            currency="USD",
+            priority="Medium",
+            status="In Process",
+            sla_breached=False,
+        )
 
     # --- Public Methods ---
 
@@ -304,6 +334,34 @@ class MockDatabase(BaseDatabase):
 
     def get_complaint(self, complaint_id: str) -> Optional[ComplaintSchema]:
         return self._complaints.get(complaint_id)
+
+    def get_customer_products(self, customer_id: str) -> list[dict]:
+        """Retorna todos los productos asociados a un cliente."""
+        return [
+            prod
+            for prod in self._products.values()
+            if prod.get("customer_id") == customer_id
+        ]
+
+    def get_active_complaints(self, customer_id: str) -> list[ComplaintSchema]:
+        """Retorna los reclamos no resueltos de un cliente."""
+        return [
+            comp
+            for comp in self._complaints.values()
+            if comp.customer_id == customer_id and comp.status in ["Open", "In Process"]
+        ]
+
+    def get_exchange_rate(
+        self, source_currency: str, target_currency: str = "USD"
+    ) -> float:
+        """Obtiene la tasa de cambio simulada."""
+        rates = {
+            ("COP", "USD"): 0.00025,
+            ("MXN", "USD"): 0.058,
+            ("ARS", "USD"): 0.0011,
+            ("USD", "USD"): 1.0,
+        }
+        return rates.get((source_currency, target_currency), 1.0)
 
 
 # Instantiate singleton instance

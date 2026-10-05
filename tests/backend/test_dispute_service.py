@@ -198,4 +198,4 @@ async def test_execute_account_inquiry_action(mock_orchestrator):
     assert response.intent_detected == IntentEnum.ACCOUNT_INQUIRY
     assert response.requires_human_handoff is False
     assert response.dispute_id is None
-    assert response.optimization_metrics.graph_nodes_count == 3
+    assert response.optimization_metrics.graph_nodes_count == 8

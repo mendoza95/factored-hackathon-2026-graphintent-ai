@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 import duckdb
@@ -20,18 +21,43 @@ FEATURE_COLS = [
     "has_past_complaint",
 ]
 
+# Patrones de expresiones regulares para heurísticas de relabeling
+INQUIRY_PATTERNS = re.compile(
+    r"\b(saldo|estado[s]? de cuenta[s]?|disponible|cuanto tengo"
+    r"|consultar saldo|ver saldo|monto disponible|resumen[es]? de cuenta[s]?)\b",
+    re.IGNORECASE,
+)
+COMPLAINT_PATTERNS = re.compile(
+    r"\b(queja|disputa|robo|duplicado|desconocido|no reconozco"
+    r"|fraude|estafa|cobro no autorizado|reclamo)\b",
+    re.IGNORECASE,
+)
+
 
 def assign_target_label(row: pd.Series) -> str:
-    """Derive ground truth intent label from interaction metadata."""
+    """Derive ground truth intent label from interaction metadata & text heuristics."""
     contact_reason = str(row.get("contact_reason", "")).lower()
-    was_escalated = row.get("was_escalated", False)
 
-    if contact_reason in ["queja", "transaccional", "complaint"]:
-        return "dispute_initiate"
-    elif was_escalated is True:
-        return "human_handoff"
-    else:
+    text_content = (
+        f"{row.get('full_text', '')} "
+        f"{row.get('detected_keywords', '')} "
+        f"{row.get('detected_intents', '')} "
+        f"{row.get('main_topics', '')}"
+    )
+
+    has_inquiry_kw = bool(INQUIRY_PATTERNS.search(text_content))
+    has_complaint_kw = bool(COMPLAINT_PATTERNS.search(text_content))
+
+    # 1. Prioridad: Consultas de saldo explícitas
+    if has_inquiry_kw and not has_complaint_kw:
         return "account_inquiry"
+
+    # 2. Reclamos o razones de contacto de disputas
+    if contact_reason in ["queja", "transaccional", "complaint"] or has_complaint_kw:
+        return "dispute_initiate"
+
+    # 3. Por defecto para resto de interacciones
+    return "account_inquiry"
 
 
 def load_and_prepare_data(data_dir: Path) -> pd.DataFrame:
@@ -119,7 +145,7 @@ def load_and_prepare_data(data_dir: Path) -> pd.DataFrame:
 
     df["has_past_complaint"] = df["customer_id"].astype(str).isin(complaint_customers)
 
-    # Generate target labels
+    # Generate target labels (con heurísticas de relabeling aplicadas)
     df["label"] = df.apply(assign_target_label, axis=1)
 
     return df

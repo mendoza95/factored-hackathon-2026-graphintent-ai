@@ -10,17 +10,10 @@ MODEL_PATH = BASE_DIR / "ml" / "models" / "intent_classifier.joblib"
 # Initialize predictor globally for fast cold-starts
 predictor = IntentPredictor(model_path=MODEL_PATH)
 
-CONFIDENCE_THRESHOLD = 0.65
-
-# INTENT_CONFIG = {
-#    0: {"name": "dispute_initiate", "action": "INITIATE_DISPUTE_WORKFLOW"},
-#    1: {"name": "human_handoff", "action": "ESCALATE_TO_HUMAN"},
-#    2: {"name": "account_inquiry", "action": "EXECUTE_ACCOUNT_INQUIRY"},
-# }
+CONFIDENCE_THRESHOLD = 0.6
 
 LABEL_CONFIG = {
     "dispute_initiate": {"action": "INITIATE_DISPUTE_WORKFLOW"},
-    "human_handoff": {"action": "ESCALATE_TO_HUMAN"},
     "account_inquiry": {"action": "EXECUTE_ACCOUNT_INQUIRY"},
 }
 
@@ -35,10 +28,9 @@ def route_intent_event(event_payload: Dict[str, Any]) -> Dict[str, Any]:
     prediction = predictor.predict(event_payload)
     predicted_label = prediction["predicted_label"]
     confidence = prediction["confidence"]
-    print(f"Confidence: {confidence} - Predicted label: {predicted_label}")
+    # print(f"Confidence: {confidence} - Predicted label: {predicted_label}")
     latency_ms = round((time.perf_counter() - start_time) * 1000, 2)
 
-    # default_config = {"name": "unsupported", "action": "COLLECT_MORE_INFO"}
     default_action = {"action": "COLLECT_MORE_INFO"}
 
     # Low-confidence fallback path
@@ -54,10 +46,7 @@ def route_intent_event(event_payload: Dict[str, Any]) -> Dict[str, Any]:
         }
 
     # High-confidence deterministic fast-path
-
     intent_info = LABEL_CONFIG.get(predicted_label, default_action)
-    # operational_action = INTENT_TO_ACTION.get(predicted_intent, "COLLECT_MORE_INFO")
-    # print(intent_info["action"])
 
     return {
         "source": "DETERMINISTIC_FAST_PATH",
@@ -84,6 +73,20 @@ if __name__ == "__main__":
         "has_past_complaint": True,
     }
 
+    # Test High-Confidence Account Inquiry Case
+    inquiry_sample = {
+        "full_text": "Hola, quisiera consultar el saldo disponible de mi cuenta.",
+        "detected_keywords": "saldo, consulta, cuenta",
+        "detected_intents": "consulta",
+        "main_topics": "saldo",
+        "channel": "chat",
+        "detected_sentiment": "neutral",
+        "duration_seconds": 30.0,
+        "wait_time_seconds": 2.0,
+        "sentiment_score": 0.0,
+        "has_past_complaint": False,
+    }
+
     # Test Low-Confidence Generic Case
     greeting_sample = {
         "full_text": "Hola buenas tardes",
@@ -91,8 +94,21 @@ if __name__ == "__main__":
         "duration_seconds": 5.0,
     }
 
-    print("=== HIGH-CONFIDENCE PAYLOAD ===")
+    # Test Low-Confidence Generic Case
+    resume_cuenta = {
+        "full_text": "Quiero ver mi resumen de cuenta",
+        "channel": "chat",
+        "duration_seconds": 5.0,
+    }
+
+    print("=== HIGH-CONFIDENCE DISPUTE ===")
     print(route_intent_event(dispute_sample))
+
+    print("\n=== HIGH-CONFIDENCE INQUIRY ===")
+    print(route_intent_event(inquiry_sample))
 
     print("\n=== LOW-CONFIDENCE PAYLOAD ===")
     print(route_intent_event(greeting_sample))
+
+    print("\n=== RESUMEN_CUENTA PAYLOAD ===")
+    print(route_intent_event(resume_cuenta))

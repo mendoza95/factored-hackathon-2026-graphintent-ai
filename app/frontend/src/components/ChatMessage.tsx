@@ -2,7 +2,9 @@
 
 import React from "react";
 import { TransactionCard } from "./TransactionCard";
+import { AccountSummaryCard } from "./AccountSummaryCard";
 import type { Transaction } from "../types/transaction";
+import type { AccountSummary } from "../types/account";
 
 export interface Message {
   id: string;
@@ -14,6 +16,7 @@ export interface Message {
   contextData?: {
     transactions?: any[];
     selectable_options?: any[];
+    account_summary?: AccountSummary; // <-- Agregado
   };
 }
 
@@ -30,6 +33,7 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
 }) => {
   const isUser = message.sender === "user";
   const options = message.contextData?.selectable_options;
+  const accountSummary = message.contextData?.account_summary; // <-- Extraer resumen
 
   return (
     <div
@@ -53,6 +57,14 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
         <p style={{ margin: 0, whiteSpace: "pre-wrap" }}>{message.text}</p>
       </div>
 
+      {/* Renderizar tarjeta de Resumen de Cuenta */}
+      {!isUser && accountSummary && (
+        <div style={{ width: "85%", marginTop: "0.5rem" }}>
+          <AccountSummaryCard summary={accountSummary} />
+        </div>
+      )}
+
+      {/* Renderizar tarjetas de Transacciones seleccionables */}
       {!isUser && options && options.length > 0 && (
         <div style={{ width: "85%", marginTop: "0.5rem" }}>
           {options.map((option, index) => {

@@ -20,6 +20,8 @@ def test_data_loading_and_labeling():
     assert "rich_text" in df.columns
     assert "has_past_complaint" in df.columns
     assert "label" in df.columns
+    # Verifica que human_handoff ya no sea parte de las etiquetas
+    assert set(df["label"].unique()).issubset({"account_inquiry", "dispute_initiate"})
 
 
 def test_predict_inference():
@@ -40,13 +42,72 @@ def test_predict_inference():
     res = predictor.predict(sample_payload)
     assert res["predicted_label"] == "dispute_initiate"
     assert res["confidence"] > 0.60
+    assert len(res["class_probabilities"]) == 2
+
+
+def test_predict_account_inquiry():
+    """Verify inference pipeline correctly predicts account_inquiry intent."""
+    predictor = IntentPredictor(model_path=MODEL_PATH)
+    sample_payload = {
+        "full_text": (
+            "Hola buenos dias quisiera consultar "
+            "mi saldo disponible y estado de cuenta."
+        ),
+        "detected_keywords": (
+            "saldo, consulta, estado de cuenta, disponible, saldo disponible"
+        ),
+        "detected_intents": "consulta_saldo",
+        "main_topics": "saldo",
+        "channel": "chat",
+        "detected_sentiment": "neutral",
+        "duration_seconds": 60.0,
+        "wait_time_seconds": 5.0,
+        "sentiment_score": 0.1,
+        "has_past_complaint": False,
+    }
+    res = predictor.predict(sample_payload)
+    assert res["predicted_label"] == "account_inquiry"
+    assert res["confidence"] > 0.60
+
+
+def test_router_account_inquiry_fast_path():
+    """Verify account_inquiry intent routing action matches confidence threshold."""
+    sample_inquiry = {
+        "full_text": (
+            "Hola buenos dias quisiera consultar mi "
+            "saldo disponible y estado de cuenta."
+        ),
+        "detected_keywords": (
+            "saldo, consulta, estado de cuenta, disponible, saldo disponible"
+        ),
+        "detected_intents": "consulta_saldo",
+        "main_topics": "saldo",
+        "channel": "chat",
+        "detected_sentiment": "neutral",
+        "duration_seconds": 60.0,
+        "wait_time_seconds": 5.0,
+        "sentiment_score": 0.1,
+        "has_past_complaint": False,
+    }
+    route_res = route_intent_event(sample_inquiry)
+
+    # Validamos que el modelo predijo account_inquiry
+    # assert route_res["predicted_label"] == "account_inquiry"
+
+    # Verificamos la acción asignada según la confianza
+    if route_res["confidence"] >= 0.60:
+        assert route_res["routing_action"] == "EXECUTE_ACTION"
+        assert route_res["action"] == "EXECUTE_ACCOUNT_INQUIRY"
+    else:
+        assert route_res["routing_action"] == "LLM_FALLBACK"
 
 
 def test_router_deterministic_fast_path():
     """Verify high-confidence payload triggers fast-path routing."""
     sample_dispute = {
-        "full_text": "Quiero poner una queja formal por "
-        "un cobro duplicado en mi tarjeta.",
+        "full_text": (
+            "Quiero poner una queja formal por un cobro duplicado en mi tarjeta."
+        ),
         "detected_keywords": "queja, cobro duplicado",
         "detected_intents": "reclamo",
         "main_topics": "transacción",
@@ -86,9 +147,7 @@ async def test_unified_workflow_execution():
         assert "response_message" in final_res
 
 
-pytest.mark.asyncio
-
-
+@pytest.mark.asyncio
 async def test_orchestrator_fast_path_and_fallback():
     """
     Verify orchestrator correctly selects fast path

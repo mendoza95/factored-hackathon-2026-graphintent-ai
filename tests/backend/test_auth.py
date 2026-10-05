@@ -6,6 +6,7 @@ from httpx import AsyncClient
 async def test_login_success(client: AsyncClient):
     payload = {"document_type": "CC", "document_number": "1098765432"}
     response = await client.post("/api/v1/auth/login", json=payload)
+    print(response.json())
     assert response.status_code == 200
 
     data = response.json()

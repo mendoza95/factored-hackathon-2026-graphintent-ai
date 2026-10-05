@@ -1,3 +1,4 @@
+# app/backend/services/task_handlers.py
 import asyncio
 import uuid
 from datetime import datetime
@@ -38,6 +39,7 @@ async def handle_extract_entities(
 async def handle_verify_customer(
     context: Dict[str, Any], request: ChatRequest, entities: Dict[str, Any]
 ) -> Dict[str, Any]:
+    await asyncio.sleep(0.05)  # Simula latencia de consulta local
     db = get_db()
     customer_id = (
         context.get("customer_id")
@@ -58,6 +60,7 @@ async def handle_verify_customer(
 async def handle_fetch_transactions(
     context: Dict[str, Any], request: ChatRequest, entities: Dict[str, Any]
 ) -> Dict[str, Any]:
+    await asyncio.sleep(0.05)  # Simula latencia de consulta local
     db = get_db()
     customer_id = (
         context.get("customer_id")
@@ -65,17 +68,13 @@ async def handle_fetch_transactions(
         or "CUST_12345"
     )
 
-    # 1. Obtener historial real del cliente desde
-    # la BD (retorna objetos TransactionSchema)
     tx_list = await asyncio.to_thread(db.get_customer_transactions, customer_id) or []
     context["recent_transactions"] = tx_list
 
-    # 2. Extraer parámetros relevantes
     claimed_amount = entities.get("claimed_amount")
     currency = entities.get("currency", "USD")
     user_text = request.message.lower()
 
-    # Identificar si es intención de cobro duplicado
     is_duplicate_intent = "duplicado" in user_text or "doble" in user_text
     context["is_duplicate_intent"] = is_duplicate_intent
     context["transactions_found"] = []
@@ -85,8 +84,6 @@ async def handle_fetch_transactions(
         context["missing_info"] = "amount_and_currency"
         return context
 
-    # 3. Conversión estandarizada accediendo directamente a los
-    # atributos del Pydantic Schema
     formatted_txs = []
     for tx in tx_list:
         amt = float(tx.amount) if tx.amount is not None else 0.0
@@ -99,7 +96,6 @@ async def handle_fetch_transactions(
             else ""
         )
 
-        # Leemos el estado real de la base de datos
         raw_status = str(tx.transaction_status or "Approved")
         status = "disputed" if raw_status in ["Reversed", "disputed"] else "posted"
 
@@ -116,9 +112,7 @@ async def handle_fetch_transactions(
             }
         )
 
-    # 4. Lógica para Cobro Duplicado vs. Disputa Estándar por Monto
     if is_duplicate_intent:
-        # Duplicado: mismo monto y misma moneda en fechas/horas cercanas
         duplicates = [
             tx
             for tx in formatted_txs
@@ -131,8 +125,6 @@ async def handle_fetch_transactions(
         else:
             context["transactions_found"] = duplicates
     else:
-        # Disputa por Monto: Buscar coincidencias en la
-        # última semana (+/- 10% margen o monto exacto)
         similar_txs = [
             tx
             for tx in formatted_txs
@@ -174,6 +166,7 @@ async def handle_evaluate_fraud_score(
 async def handle_create_complaint_record(
     context: Dict[str, Any], request: ChatRequest, entities: Dict[str, Any]
 ) -> Dict[str, Any]:
+    await asyncio.sleep(0.05)  # Simula escritura en BD local
     db = get_db()
     customer_id = (
         context.get("customer_id")
@@ -194,4 +187,108 @@ async def handle_create_complaint_record(
         await asyncio.to_thread(db.create_complaint, new_complaint)
         context["dispute_id"] = complaint_id
 
+    return context
+
+
+@register_handler("fetch_customer_info")
+async def handle_fetch_customer_info(
+    context: Dict[str, Any], request: ChatRequest, entities: Dict[str, Any]
+) -> Dict[str, Any]:
+    await asyncio.sleep(0.05)  # Simula latencia de lectura local (50ms)
+    db = get_db()
+    customer_id = (
+        context.get("customer_id")
+        or getattr(request, "customer_id", None)
+        or "CUST_12345"
+    )
+    customer = await asyncio.to_thread(db.get_customer, customer_id)
+    context["customer_info"] = customer or {}
+    return context
+
+
+@register_handler("fetch_customer_products")
+async def handle_fetch_customer_products(
+    context: Dict[str, Any], request: ChatRequest, entities: Dict[str, Any]
+) -> Dict[str, Any]:
+    await asyncio.sleep(0.05)  # Simula latencia de lectura local (50ms)
+    db = get_db()
+    customer_id = (
+        context.get("customer_id")
+        or getattr(request, "customer_id", None)
+        or "CUST_12345"
+    )
+    products = await asyncio.to_thread(db.get_customer_products, customer_id)
+    context["products"] = products
+    return context
+
+
+@register_handler("fetch_recent_transactions")
+async def handle_fetch_recent_transactions_inquiry(
+    context: Dict[str, Any], request: ChatRequest, entities: Dict[str, Any]
+) -> Dict[str, Any]:
+    await asyncio.sleep(0.05)  # Simula latencia de lectura local (50ms)
+    db = get_db()
+    customer_id = (
+        context.get("customer_id")
+        or getattr(request, "customer_id", None)
+        or "CUST_12345"
+    )
+    tx_list = await asyncio.to_thread(db.get_customer_transactions, customer_id)
+    context["recent_transactions"] = tx_list or []
+    return context
+
+
+@register_handler("fetch_active_complaints")
+async def handle_fetch_active_complaints(
+    context: Dict[str, Any], request: ChatRequest, entities: Dict[str, Any]
+) -> Dict[str, Any]:
+    await asyncio.sleep(0.05)  # Simula latencia de lectura local (50ms)
+    db = get_db()
+    customer_id = (
+        context.get("customer_id")
+        or getattr(request, "customer_id", None)
+        or "CUST_12345"
+    )
+    complaints = await asyncio.to_thread(db.get_active_complaints, customer_id)
+    context["active_complaints"] = complaints or []
+    return context
+
+
+@register_handler("fetch_exchange_rates")
+async def handle_fetch_exchange_rates(
+    context: Dict[str, Any], request: ChatRequest, entities: Dict[str, Any]
+) -> Dict[str, Any]:
+    await asyncio.sleep(0.05)  # Simula latencia de lectura local (50ms)
+    db = get_db()
+    rate = await asyncio.to_thread(db.get_exchange_rate, "MXN", "USD")
+    context["exchange_rate_usd"] = rate
+    return context
+
+
+@register_handler("consolidate_financial_summary")
+async def handle_consolidate_financial_summary(
+    context: Dict[str, Any], request: ChatRequest, entities: Dict[str, Any]
+) -> Dict[str, Any]:
+    products = context.get("products", [])
+    rate_usd = context.get("exchange_rate_usd", 1.0)
+
+    total_balance_local = sum(float(p.get("current_balance", 0.0)) for p in products)
+    total_balance_usd = total_balance_local * rate_usd
+
+    context["account_summary"] = {
+        "customer": context.get("customer_info"),
+        "total_balance_local": total_balance_local,
+        "total_balance_usd": total_balance_usd,
+        "products_count": len(products),
+        "recent_tx_count": len(context.get("recent_transactions", [])),
+        "open_complaints_count": len(context.get("active_complaints", [])),
+    }
+    return context
+
+
+@register_handler("generate_summary_report")
+async def handle_generate_summary_report(
+    context: Dict[str, Any], request: ChatRequest, entities: Dict[str, Any]
+) -> Dict[str, Any]:
+    context["summary_ready"] = True
     return context

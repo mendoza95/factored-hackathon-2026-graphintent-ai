@@ -1,4 +1,6 @@
+# app/backend/services/dispute_service.py
 import asyncio
+import time
 from typing import Any, Optional, Tuple
 
 from app.backend.core.graph_scheduler import GraphColoringScheduler
@@ -14,6 +16,7 @@ from app.backend.services.orchestrator import process_interaction_event
 from app.backend.services.session_service import session_service
 from app.backend.services.task_handlers import TASK_HANDLERS
 from app.backend.utils.entity_extractor import extract_entities_regex
+from app.ml.data import COMPLAINT_PATTERNS, INQUIRY_PATTERNS
 
 # Action string to IntentEnum mapping for schema backwards-compatibility
 ACTION_TO_INTENT_MAP = {
@@ -31,11 +34,14 @@ class DisputeService:
         pass
 
     async def process_chat_message(
-        self, request: ChatRequest, customer_id: Optional[str] = None
+        self,
+        request: ChatRequest,
+        customer_id: Optional[str] = None,
+        use_graph: bool = True,
     ) -> ChatResponse:
         """
         Process incoming chat, execute fast-path or LLM routing,
-        and run graph task scheduler.
+        and run task execution (Graph Scheduler or Sequential).
         """
         session_id = getattr(request, "session_id", "default_session")
         session = session_service.get_session(session_id)
@@ -57,9 +63,30 @@ class DisputeService:
         effective_customer_id = (
             customer_id or getattr(request, "customer_id", None) or "CUST_12345"
         )
+
+        message_text = request.message or ""
+        text_lower = message_text.lower()
+
+        # Detección contextual dinámica
+        is_complaint = bool(COMPLAINT_PATTERNS.search(text_lower))
+        is_inquiry = bool(INQUIRY_PATTERNS.search(text_lower))
+
+        # Valores dinámicos según el contenido real del mensaje
+        sentiment = -0.5 if is_complaint else 0.0
+        topic = (
+            "transaccion" if is_complaint else ("saldo" if is_inquiry else "general")
+        )
+
         payload = {
-            "full_text": request.message,
+            "full_text": message_text,
+            "detected_keywords": getattr(request, "detected_keywords", message_text),
+            "detected_intents": getattr(request, "detected_intents", ""),
+            "main_topics": getattr(request, "main_topics", topic),
             "channel": getattr(request, "channel", "chat"),
+            "duration_seconds": getattr(request, "duration_seconds", 30.0),
+            "wait_time_seconds": getattr(request, "wait_time_seconds", 2.0),
+            "sentiment_score": getattr(request, "sentiment_score", sentiment),
+            "has_past_complaint": getattr(request, "has_past_complaint", False),
             "customer_id": effective_customer_id,
         }
 
@@ -72,16 +99,34 @@ class DisputeService:
             request, session_id, session, orch_result
         )
 
-        # 2. Construir y ejecutar grafo de tareas
-        scheduler = GraphColoringScheduler()
-        self._build_task_graph(scheduler, action, entities)
+        # 2. Ejecutar tareas según el modo (Grafo o Secuencial)
+        if use_graph:
+            scheduler = GraphColoringScheduler()
+            self._build_task_graph(scheduler, action, entities)
 
-        batch_schedule = scheduler.compute_schedule()
-        metrics = scheduler.get_optimization_metrics()
+            batch_schedule = scheduler.compute_schedule()
+            metrics = scheduler.get_optimization_metrics()
 
-        execution_context = await self._execute_scheduled_batches(
-            batch_schedule, request, entities, effective_customer_id
-        )
+            execution_context = await self._execute_scheduled_batches(
+                batch_schedule, request, entities, effective_customer_id
+            )
+        else:
+            tasks_list = self._get_task_list_for_action(action)
+            start_exec = time.perf_counter()
+            execution_context = await self._execute_sequential(
+                tasks_list, request, entities, effective_customer_id
+            )
+            exec_time_ms = (time.perf_counter() - start_exec) * 1000.0
+
+            # Métricas simuladas/secuenciales para mantener
+            # la firma del objeto de respuesta
+            batch_schedule = {0: tasks_list}
+            metrics = {
+                "nodes_count": len(tasks_list),
+                "edges_count": 0,
+                "chromatic_number": len(tasks_list),
+                "total_execution_time_ms": exec_time_ms,
+            }
 
         execution_context["is_duplicate_intent"] = (
             session.get("dispute_type") == "duplicate"
@@ -111,6 +156,50 @@ class DisputeService:
             batch_schedule=batch_schedule,
             orch_latency=orch_result.get("latency_ms", 0),
         )
+
+    def _get_task_list_for_action(self, action: str) -> list[str]:
+        """Devuelve la lista ordenada de nodos según la acción."""
+        if action == "EXECUTE_ACCOUNT_INQUIRY":
+            return [
+                "verify_customer",
+                "fetch_customer_info",
+                "fetch_customer_products",
+                "fetch_recent_transactions",
+                "fetch_active_complaints",
+                "fetch_exchange_rates",
+                "consolidate_financial_summary",
+                "generate_summary_report",
+            ]
+        return [
+            "extract_entities",
+            "verify_customer",
+            "fetch_transactions",
+            "evaluate_fraud_score",
+            "create_complaint_record",
+        ]
+
+    async def _execute_sequential(
+        self,
+        tasks_list: list[str],
+        request: ChatRequest,
+        entities: dict,
+        customer_id: str,
+    ) -> dict[str, Any]:
+        """
+        Ejecuta las tareas del flujo de forma
+        estrictamente secuencial (una por una).
+        """
+        context: dict[str, Any] = {
+            "customer_id": customer_id,
+            "entities": entities or {},
+        }
+
+        for node_name in tasks_list:
+            handler = TASK_HANDLERS.get(node_name)
+            if handler:
+                await handler(context, request, entities)
+
+        return context
 
     async def _extract_and_resolve_entities(
         self, request: ChatRequest, session_id: str, session: dict, orch_result: dict
@@ -283,6 +372,7 @@ class DisputeService:
             context_data={
                 "transactions": execution_context.get("transactions_found", []),
                 "selectable_options": options,
+                "account_summary": execution_context.get("account_summary"),
                 "is_duplicate_intent": execution_context.get(
                     "is_duplicate_intent", False
                 ),
@@ -304,32 +394,74 @@ class DisputeService:
     def _build_task_graph(
         self, scheduler: GraphColoringScheduler, action: str, entities: dict
     ) -> None:
-        """Build conflict graph dynamically based on determined action."""
+        """Selecciona y construye el grafo según la acción determinada por el modelo."""
         scheduler.graph.clear()
 
-        base_tasks = ["extract_entities", "verify_customer"]
+        if action == "EXECUTE_ACCOUNT_INQUIRY":
+            self._build_account_inquiry_graph(scheduler)
+        else:
+            self._build_dispute_graph(scheduler)
+
+    def _build_dispute_graph(self, scheduler: GraphColoringScheduler) -> None:
+        """Construye el grafo para el flujo de disputas."""
+        base_tasks = [
+            "extract_entities",
+            "verify_customer",
+            "fetch_transactions",
+            "evaluate_fraud_score",
+            "create_complaint_record",
+        ]
         for task in base_tasks:
             scheduler.graph.add_node(task)
 
         scheduler.graph.add_edge("extract_entities", "verify_customer")
+        scheduler.graph.add_edge("verify_customer", "fetch_transactions")
+        scheduler.graph.add_edge("fetch_transactions", "evaluate_fraud_score")
+        scheduler.graph.add_edge("evaluate_fraud_score", "create_complaint_record")
+        scheduler.graph.add_edge("verify_customer", "create_complaint_record")
 
-        if action == "INITIATE_DISPUTE_WORKFLOW":
-            dispute_tasks = [
-                "fetch_transactions",
-                "evaluate_fraud_score",
-                "create_complaint_record",
-            ]
-            for task in dispute_tasks:
-                scheduler.graph.add_node(task)
+    def _build_account_inquiry_graph(self, scheduler: GraphColoringScheduler) -> None:
+        """
+        Construye el grafo concurrente para la Opción A
+        (Resumen de cuenta completo).
+        """
+        nodes = [
+            "verify_customer",
+            "fetch_customer_info",
+            "fetch_customer_products",
+            "fetch_recent_transactions",
+            "fetch_active_complaints",
+            "fetch_exchange_rates",
+            "consolidate_financial_summary",
+            "generate_summary_report",
+        ]
+        for node in nodes:
+            scheduler.graph.add_node(node)
 
-            scheduler.graph.add_edge("verify_customer", "fetch_transactions")
-            scheduler.graph.add_edge("fetch_transactions", "evaluate_fraud_score")
-            scheduler.graph.add_edge("evaluate_fraud_score", "create_complaint_record")
-            scheduler.graph.add_edge("verify_customer", "create_complaint_record")
+        # Capa 1: Consultas en paralelo tras verificar al cliente
+        scheduler.graph.add_edge("verify_customer", "fetch_customer_products")
+        scheduler.graph.add_edge("verify_customer", "fetch_recent_transactions")
+        scheduler.graph.add_edge("verify_customer", "fetch_active_complaints")
 
-        elif action == "EXECUTE_ACCOUNT_INQUIRY":
-            scheduler.graph.add_node("fetch_account_balance")
-            scheduler.graph.add_edge("verify_customer", "fetch_account_balance")
+        # Capa 2: Consolidación (espera las consultas previas)
+        scheduler.graph.add_edge("fetch_customer_info", "consolidate_financial_summary")
+        scheduler.graph.add_edge(
+            "fetch_customer_products", "consolidate_financial_summary"
+        )
+        scheduler.graph.add_edge(
+            "fetch_recent_transactions", "consolidate_financial_summary"
+        )
+        scheduler.graph.add_edge(
+            "fetch_active_complaints", "consolidate_financial_summary"
+        )
+        scheduler.graph.add_edge(
+            "fetch_exchange_rates", "consolidate_financial_summary"
+        )
+
+        # Capa 3: Generación del reporte
+        scheduler.graph.add_edge(
+            "consolidate_financial_summary", "generate_summary_report"
+        )
 
     async def _execute_scheduled_batches(
         self,

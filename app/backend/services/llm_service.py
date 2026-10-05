@@ -113,7 +113,6 @@ class LLMService:
                         f"**{claimed_amount} {currency}**. "
                         f"Encontramos las siguientes transacciones recientes "
                         f"en la última semana con montos similares:\n\n"
-                        # f"{tx_list}\n\n"
                         f"Por favor, **selecciona** de la transacción sobre "
                         f"la cual deseas iniciar el reclamo."
                     )
@@ -130,11 +129,16 @@ class LLMService:
                 f"{greeting}. Entiendo tu requerimiento. Estoy transfiriendo tu caso "
                 "con un especialista de soporte humano."
             )
+
         elif intent == IntentEnum.ACCOUNT_INQUIRY:
-            return (
-                f"{greeting}. Puedes consultar el saldo y movimientos "
-                "de tu cuenta desde la app móvil o el portal web."
-            )
+            summary = context.get("account_summary", {})
+            customer = summary.get("customer") or {}
+
+            # Obtener nombre del cliente si está disponible
+            first_name = customer.get("first_name", "")
+            customer_str = f" {first_name}".rstrip() if first_name else ""
+
+            return f"{greeting}{customer_str}. Este es tu resumen de cuenta actual:\n\n"
 
         return (
             f"{greeting}. ¿Podrías brindarme más detalles sobre la transacción "

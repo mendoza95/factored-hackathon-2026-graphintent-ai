@@ -1,18 +1,10 @@
+// src/App.tsx
 import { useAuth } from "./context/AuthContext";
 import { ChatBox } from "./components/ChatBox";
-import { apiClient } from "./api/client";
+import { LoginForm } from "./components/LoginForm";
 
 export function App() {
   const { isAuthenticated, login, logout } = useAuth();
-
-  const handleLogin = async () => {
-    try {
-      const res = await apiClient.get("/auth/token");
-      login(res.data.access_token);
-    } catch (err: any) {
-      console.error("Login failed:", err);
-    }
-  };
 
   return (
     <div style={{ padding: "2rem", fontFamily: "sans-serif", maxWidth: "800px", margin: "0 auto" }}>
@@ -25,17 +17,13 @@ export function App() {
         }}
       >
         <h2>Financial Dispute Assistant</h2>
-        {isAuthenticated ? (
-          <button onClick={logout}>Logout</button>
-        ) : (
-          <button onClick={handleLogin}>Log In (Test Token)</button>
-        )}
+        {isAuthenticated && <button onClick={logout}>Cerrar Sesión</button>}
       </header>
 
       {isAuthenticated ? (
         <ChatBox />
       ) : (
-        <p>Please log in using the test token button above to access the dispute assistant.</p>
+        <LoginForm onSuccess={(token) => login(token)} />
       )}
     </div>
   );
