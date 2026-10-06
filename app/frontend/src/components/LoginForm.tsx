@@ -14,6 +14,8 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onSuccess }) => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    console.log("Intentando iniciar sesión con:", { documentType, documentNumber });
+
     if (!documentNumber.trim()) {
       setError("Ingresa un número de documento válido.");
       return;
@@ -28,12 +30,35 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onSuccess }) => {
         document_number: documentNumber,
       });
 
+      console.log("Respuesta exitosa del servidor:", response.data);
       onSuccess(response.data.access_token);
     } catch (err: any) {
-      console.error("Error al iniciar sesión:", err);
-      setError(
-        err.response?.data?.detail || "Error al iniciar sesión. Revisa los datos."
-      );
+      console.error("Detalle completo del error al iniciar sesión:", err);
+
+      if (err.response) {
+        // El servidor respondió con un status fuera del rango 2xx
+        console.error("Status del error:", err.response.status);
+        console.error("Datos de la respuesta:", err.response.data);
+
+        const detail = err.response.data?.detail;
+        if (typeof detail === "string") {
+          setError(detail);
+        } else if (Array.isArray(detail)) {
+          // Errores de validación de Pydantic (FastAPI)
+          const msg = detail.map((d: any) => d.msg).join(", ");
+          setError(`Error de validación: ${msg}`);
+        } else {
+          setError(`Error ${err.response.status}: Revisa los datos ingresados.`);
+        }
+      } else if (err.request) {
+        // La petición fue enviada pero no se recibió respuesta
+        console.error("No se recibió respuesta del servidor:", err.request);
+        setError("No se pudo conectar con el servidor. Revisa tu conexión.");
+      } else {
+        // Ocurrió un error al configurar la petición
+        console.error("Error de configuración/petición:", err.message);
+        setError(`Error inesperado: ${err.message}`);
+      }
     } finally {
       setLoading(false);
     }
