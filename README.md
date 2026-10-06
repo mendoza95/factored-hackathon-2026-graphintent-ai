@@ -1,6 +1,6 @@
-# Transaction Dispute AI Agent
+# Graph Intent AI Agent
 
-An AI-powered agent for handling transaction disputes in financial apps. It leverages a dynamic **Graph Coloring Scheduler** to organize agent sub-tasks into conflict-free parallel execution batches.
+An ML/AI-powered agent for handling transaction disputes/account inquiries within a financial setting. It leverages a dynamic **Graph Coloring Scheduler** to organize dependent sub-tasks into conflict-free parallel execution batches. An ML model classifies user intent and redirects the execution workflow either to the **graph scheduler** to retrieve information from the database or to the **AI bot** to retrieve more information from the user.
 
 ## Project Structure
 
